@@ -1,9 +1,8 @@
-export const dynamic = 'force-dynamic'
-
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { Suspense } from 'react'
 import Link from 'next/link'
+import { connection } from 'next/server' // <--- NEW: Import connection
 
 // ==========================================
 // 1. SERVER ACTIONS
@@ -12,7 +11,6 @@ async function logNewRun(formData: FormData) {
   'use server'
   const supabase = await createClient()
   
-  // Verify the user is logged in before saving
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 
 
@@ -20,7 +18,6 @@ async function logNewRun(formData: FormData) {
   const duration = formData.get('duration')
   if (!distance || !duration) return
 
-  // Save the main workout with the user's ID
   const { data: workout, error: workoutError } = await supabase
     .from('workouts')
     .insert({ title: 'Outdoor Run', type: 'running', user_id: user.id })
@@ -28,7 +25,6 @@ async function logNewRun(formData: FormData) {
     .single()
 
   if (workout && !workoutError) {
-    // Save the specific running metrics
     await supabase.from('running_logs').insert({
       workout_id: workout.id,
       distance_km: parseFloat(distance as string),
@@ -50,15 +46,15 @@ async function signOut() {
 // 2. MAIN LAYOUT
 // ==========================================
 export default async function HomePage() {
-  const supabase = await createClient()
+  // <--- NEW: Tell Next.js 16 to wait for a real user request
+  await connection() 
   
-  // Check if a user session exists when the page loads
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
       
-      {/* Sticky Header with Dynamic Auth */}
       <header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div>
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Tracker</h1>
@@ -67,7 +63,6 @@ export default async function HomePage() {
           </p>
         </div>
         
-        {/* Toggle between Sign Out button and Sign In link */}
         {user ? (
           <form action={signOut}>
             <button className="text-sm font-bold text-gray-500 hover:text-black transition-colors">
@@ -83,14 +78,12 @@ export default async function HomePage() {
       
       <div className="px-6 mt-6 space-y-8">
         
-        {/* Warning Banner for Logged-Out Users */}
         {!user && (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl flex items-center gap-2">
             <span>⚠️</span> You must be signed in to log a workout.
           </div>
         )}
 
-        {/* Input Form Section (Disabled if not logged in) */}
         <section className={`bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-opacity ${!user ? 'opacity-50 pointer-events-none' : ''}`}>
           <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             🏃 Log a Run
@@ -121,7 +114,6 @@ export default async function HomePage() {
           </form>
         </section>
 
-        {/* History Section */}
         <section>
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Recent History</h3>
           <Suspense fallback={<div className="animate-pulse h-20 bg-gray-200 rounded-xl"></div>}>
@@ -155,7 +147,6 @@ async function WorkoutList() {
   return (
     <ul className="space-y-3">
       {workouts.map((workout) => {
-        // Format the database timestamp into a readable date string
         const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
         const runLog = workout.running_logs?.[0]
 
