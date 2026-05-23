@@ -87,7 +87,7 @@ async function Dashboard() {
             </button>
           </form>
         ) : (
-          <Link href="/login" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
+          <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
             Sign In
           </Link>
         )}
