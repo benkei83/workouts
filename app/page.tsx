@@ -41,15 +41,12 @@ async function signOut() {
   revalidatePath('/')
 }
 
-
 // ==========================================
 // 2. STATIC PAGE SHELL
 // ==========================================
-// Next.js can instantly build this part because it doesn't ask for user data
 export default function HomePage() {
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
-      {/* We wrap the entire dynamic app in Suspense to satisfy Next.js 15 */}
       <Suspense fallback={
         <div className="flex justify-center items-center h-screen">
           <p className="text-gray-500 font-medium animate-pulse">Loading tracker...</p>
@@ -61,13 +58,11 @@ export default function HomePage() {
   )
 }
 
-
 // ==========================================
-// 3. DYNAMIC DASHBOARD (Requires User Data)
+// 3. DYNAMIC DASHBOARD 
 // ==========================================
 async function Dashboard() {
   const supabase = await createClient()
-  // Because this is safely inside Suspense, Next.js won't crash when we check the user
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
@@ -131,27 +126,32 @@ async function Dashboard() {
           </form>
         </section>
 
-        <section>
-          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Recent History</h3>
-          <Suspense fallback={<div className="animate-pulse h-20 bg-gray-200 rounded-xl"></div>}>
-            <WorkoutList />
-          </Suspense>
-        </section>
+        {/* NEW: Only render this entire section IF a user exists */}
+        {user && (
+          <section>
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Recent History</h3>
+            <Suspense fallback={<div className="animate-pulse h-20 bg-gray-200 rounded-xl"></div>}>
+              {/* NEW: Pass the user's specific ID down into the database component */}
+              <WorkoutList userId={user.id} />
+            </Suspense>
+          </section>
+        )}
       </div>
     </>
   )
 }
 
-
 // ==========================================
 // 4. DATABASE FETCHING COMPONENT
 // ==========================================
-async function WorkoutList() {
+// NEW: Accept the userId as a required property
+async function WorkoutList({ userId }: { userId: string }) {
   const supabase = await createClient()
   
   const { data: workouts, error } = await supabase
     .from('workouts')
     .select('*, running_logs(*)')
+    .eq('user_id', userId) // NEW: The SQL WHERE clause!
     .order('created_at', { ascending: false })
 
   if (error) {
