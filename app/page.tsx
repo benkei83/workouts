@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { connection } from 'next/server' // <--- NEW: Import connection
 
 // ==========================================
 // 1. SERVER ACTIONS
@@ -42,19 +41,37 @@ async function signOut() {
   revalidatePath('/')
 }
 
+
 // ==========================================
-// 2. MAIN LAYOUT
+// 2. STATIC PAGE SHELL
 // ==========================================
-export default async function HomePage() {
-  // <--- NEW: Tell Next.js 16 to wait for a real user request
-  await connection() 
-  
+// Next.js can instantly build this part because it doesn't ask for user data
+export default function HomePage() {
+  return (
+    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
+      {/* We wrap the entire dynamic app in Suspense to satisfy Next.js 15 */}
+      <Suspense fallback={
+        <div className="flex justify-center items-center h-screen">
+          <p className="text-gray-500 font-medium animate-pulse">Loading tracker...</p>
+        </div>
+      }>
+        <Dashboard />
+      </Suspense>
+    </main>
+  )
+}
+
+
+// ==========================================
+// 3. DYNAMIC DASHBOARD (Requires User Data)
+// ==========================================
+async function Dashboard() {
   const supabase = await createClient()
+  // Because this is safely inside Suspense, Next.js won't crash when we check the user
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
-    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
-      
+    <>
       <header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div>
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Tracker</h1>
@@ -121,12 +138,13 @@ export default async function HomePage() {
           </Suspense>
         </section>
       </div>
-    </main>
+    </>
   )
 }
 
+
 // ==========================================
-// 3. DATABASE FETCHING COMPONENT
+// 4. DATABASE FETCHING COMPONENT
 // ==========================================
 async function WorkoutList() {
   const supabase = await createClient()
