@@ -102,6 +102,7 @@ export default function CardioForm({
         <input type="hidden" name="workout_id" value={workoutId} />
         <input type="hidden" name="environment" value={environment} />
         <input type="hidden" name="session_type" value={sessionType} />
+        <input type="hidden" name="legs" value={JSON.stringify(legs)} />
 
         {/* Environment Toggle */}
         <div className="flex bg-gray-100 p-1 rounded-xl">

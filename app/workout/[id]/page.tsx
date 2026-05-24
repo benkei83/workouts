@@ -1,27 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import Link from 'next/link'
 import { InteractiveCanvas } from './InteractiveCanvas'
+import { finishWorkout } from '../actions'
 
 // ==========================================
-// 1. SERVER ACTIONS
+// THE PAGE SHELL (Instant Load)
 // ==========================================
-async function finishWorkout() {
-  'use server'
-  redirect('/')
-}
-
-// ==========================================
-// 2. THE PAGE SHELL (Instant Load)
-// ==========================================
-// Notice this is NOT an async function anymore!
 export default function ActiveWorkoutPage({ 
   params 
 }: { 
   params: Promise<{ id: string }> 
 }) {
   return (
-    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-24">
+    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-24 relative">
       
       <Suspense fallback={
         <div className="flex flex-col items-center justify-center pt-32 space-y-4 animate-pulse">
@@ -30,48 +23,29 @@ export default function ActiveWorkoutPage({
           <p className="text-gray-400 font-medium mt-4">Loading your canvas...</p>
         </div>
       }>
-        {/* Pass the unresolved Promise directly down into the secure loader */}
         <WorkoutDataLoader params={params} />
       </Suspense>
-
-      {/* Floating Finish Button */}
-      <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pointer-events-none">
-        <form action={finishWorkout} className="max-w-md mx-auto pointer-events-auto">
-          <button 
-            type="submit" 
-            className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
-          >
-            Finish Workout
-          </button>
-        </form>
-      </div>
 
     </main>
   )
 }
 
 // ==========================================
-// 3. THE SECURE DATA LOADER
+// THE SECURE DATA LOADER
 // ==========================================
-// This is where we safely await both the params and the database queries
 async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   
   const supabase = await createClient()
-  
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/sign-in')
 
-  // Fetch the workout and all nested relational data
   const { data: workout, error } = await supabase
     .from('workouts')
     .select(`
       *, 
-      running_logs(*), 
-      strength_logs(
-        *,
-        strength_sets(*, exercises(name))
-      )
+      running_logs(*, running_legs(*)), 
+      strength_logs(*, strength_sets(*, exercises(name)))
     `)
     .eq('id', id)
     .eq('user_id', user.id)
@@ -79,7 +53,9 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   if (error || !workout) redirect('/')
 
-  // Fetch the global list of exercises for the dropdown
+  // If the workout is already finished, kick them out of the active canvas
+  if (workout.total_duration_mins !== null) redirect('/')
+
   const { data: allExercises } = await supabase
     .from('exercises')
     .select('id, name')
@@ -93,12 +69,21 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   return (
     <>
-      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-extrabold text-gray-900 truncate">{workout.title}</h1>
-          <p className="text-gray-500 text-xs font-medium">Started at {startTime}</p>
+      <header className="bg-white px-4 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {/* THE X BUTTON: Navigates safely back to dashboard without closing the workout */}
+          <Link href="/" className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors font-bold text-gray-500">
+            ✕
+          </Link>
+          <div>
+            <h1 className="text-lg font-extrabold text-gray-900 truncate">{workout.title}</h1>
+            <p className="text-gray-500 text-xs font-medium">Started at {startTime}</p>
+          </div>
         </div>
-        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-green-500 uppercase tracking-widest hidden sm:inline-block">Live</span>
+          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse mr-2"></div>
+        </div>
       </header>
 
       <div className="px-6 mt-6">
@@ -108,6 +93,21 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           initialStrengthLogs={workout.strength_logs || []}
           exercises={allExercises || []}
         />
+      </div>
+
+      {/* Floating Finish Button */}
+      <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pointer-events-none">
+        <form action={finishWorkout} className="max-w-md mx-auto pointer-events-auto">
+          {/* Hidden input passes the ID directly to the server action */}
+          <input type="hidden" name="workout_id" value={workout.id} />
+          
+          <button 
+            type="submit" 
+            className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
+          >
+            Finish Workout
+          </button>
+        </form>
       </div>
     </>
   )

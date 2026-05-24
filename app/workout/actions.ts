@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 export async function saveCardioLog(formData: FormData) {
   const supabase = await createClient()
@@ -13,6 +14,7 @@ export async function saveCardioLog(formData: FormData) {
   const distanceRaw = formData.get('distance')
   const speedRaw = formData.get('average_speed')
   const inclineRaw = formData.get('incline')
+  const legsRaw = formData.get('legs') as string // NEW: Grab the stringified legs
 
   if (!workoutId || !durationRaw) return { error: 'Missing required fields' }
 
@@ -21,16 +23,8 @@ export async function saveCardioLog(formData: FormData) {
   let finalSpeed = speedRaw ? parseFloat(speedRaw as string) : null
   const finalIncline = inclineRaw ? parseFloat(inclineRaw as string) : null
 
-  // THE SMART MATH
-  if (sessionType === 'interval' && finalSpeed && durationMins) {
-    // Calculate theoretical distance: Speed (km/h) * Time (hours)
-    finalDistance = parseFloat((finalSpeed * (durationMins / 60)).toFixed(2))
-  } else if (sessionType === 'distance' && finalDistance && durationMins) {
-    // Calculate average speed: Distance (km) / Time (hours)
-    finalSpeed = parseFloat((finalDistance / (durationMins / 60)).toFixed(2))
-  }
-
-  const { error } = await supabase.from('running_logs').insert({
+  // 1. Insert the parent header into running_logs and RETURN the new ID
+  const { data: runningLog, error: logError } = await supabase.from('running_logs').insert({
     workout_id: workoutId,
     environment: environment,
     session_type: sessionType,
@@ -38,11 +32,32 @@ export async function saveCardioLog(formData: FormData) {
     distance_km: finalDistance,
     average_speed: finalSpeed,
     average_incline: finalIncline,
-  })
+  }).select('id').single()
 
-  if (error) {
-    console.error(error)
+  if (logError || !runningLog) {
+    console.error(logError)
     return { error: 'Failed to save cardio log' }
+  }
+
+  // 2. If this was an interval session, bulk insert the individual legs
+  if (sessionType === 'interval' && legsRaw) {
+    const legs = JSON.parse(legsRaw)
+    
+    const legsToInsert = legs.map((leg: any, index: number) => ({
+      running_log_id: runningLog.id,
+      leg_order: index + 1,
+      leg_type: leg.type,
+      duration_mins: leg.duration,
+      speed_kmh: leg.speed,
+      incline_percent: leg.incline
+    }))
+
+    const { error: legsError } = await supabase.from('running_legs').insert(legsToInsert)
+    
+    if (legsError) {
+      console.error(legsError)
+      return { error: 'Failed to save interval legs' }
+    }
   }
 
   revalidatePath(`/workout/${workoutId}`)
@@ -95,4 +110,35 @@ export async function saveStrengthExercise(workoutId: string, exerciseId: string
 
   revalidatePath(`/workout/${workoutId}`)
   return { success: true }
+}
+
+export async function finishWorkout(formData: FormData) {
+  const workoutId = formData.get('workout_id') as string
+  if (!workoutId) return
+
+  const supabase = await createClient()
+
+  // 1. Get the start time
+  const { data: workout } = await supabase
+    .from('workouts')
+    .select('created_at')
+    .eq('id', workoutId)
+    .single()
+
+  if (workout) {
+    // 2. Calculate the difference in minutes
+    const startTime = new Date(workout.created_at).getTime()
+    const now = new Date().getTime()
+    const durationMins = Math.max(1, Math.round((now - startTime) / 60000))
+
+    // 3. Stamp the total duration to mark it as "Completed"
+    await supabase
+      .from('workouts')
+      .update({ total_duration_mins: durationMins })
+      .eq('id', workoutId)
+  }
+
+  // 4. Refresh the home page data and navigate there
+  revalidatePath('/')
+  redirect('/')
 }

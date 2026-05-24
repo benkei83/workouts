@@ -14,12 +14,25 @@ async function startWorkout() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 
 
-  // Create a new empty workout bucket
+  // 1. Check if an active workout already exists (duration is null)
+  const { data: existingWorkout } = await supabase
+    .from('workouts')
+    .select('id')
+    .eq('user_id', user.id)
+    .is('total_duration_mins', null)
+    .single()
+
+  // 2. If one exists, redirect to it instead of creating a new one
+  if (existingWorkout) {
+    redirect(`/workout/${existingWorkout.id}`)
+  }
+
+  // 3. Otherwise, create a new empty workout bucket
   const { data: workout, error } = await supabase
     .from('workouts')
     .insert({ 
       user_id: user.id, 
-      title: 'Active Session' // We can let the user rename this later
+      title: 'Active Session'
     })
     .select()
     .single()
@@ -29,7 +42,6 @@ async function startWorkout() {
     return
   }
 
-  // Instantly route the user to the new Active Workout Canvas
   redirect(`/workout/${workout.id}`)
 }
 
@@ -82,41 +94,20 @@ async function Dashboard() {
           </form>
         ) : (
           <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
-            Sign In
+            Sign SignIn
           </Link>
         )}
       </header>
       
       <div className="px-6 mt-6 space-y-8">
-        
         {!user ? (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl flex items-center gap-2">
             <span>⚠️</span> You must be signed in to log a workout.
           </div>
         ) : (
-          /* NEW: The Hero "Start" Section */
-          <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-2">Ready to train?</h2>
-            <p className="text-sm text-gray-500 mb-6">Start an empty session to log strength, 4x4 intervals, or a hybrid workout.</p>
-            
-            <form action={startWorkout}>
-              <button 
-                type="submit" 
-                className="w-full bg-black text-white font-bold rounded-xl py-4 flex items-center justify-center gap-2 hover:bg-gray-800 active:scale-[0.98] transition-all shadow-md"
-              >
-                <span className="text-xl">+</span> Start Empty Workout
-              </button>
-            </form>
-          </section>
-        )}
-
-        {user && (
-          <section>
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Training History</h3>
-            <Suspense fallback={<div className="animate-pulse h-20 bg-gray-200 rounded-xl"></div>}>
-              <WorkoutList userId={user.id} />
-            </Suspense>
-          </section>
+          <Suspense fallback={<div className="animate-pulse h-32 bg-gray-200 rounded-2xl"></div>}>
+            <WorkoutManager userId={user.id} />
+          </Suspense>
         )}
       </div>
     </>
@@ -124,12 +115,12 @@ async function Dashboard() {
 }
 
 // ==========================================
-// 4. DATABASE FETCHING COMPONENT
+// 4. DATABASE FETCHING & ROUTING COMPONENT
 // ==========================================
-async function WorkoutList({ userId }: { userId: string }) {
+async function WorkoutManager({ userId }: { userId: string }) {
   const supabase = await createClient()
   
-  // NEW: Fetch the workout bucket, plus any associated running OR strength logs
+  // Fetch all workouts
   const { data: workouts, error } = await supabase
     .from('workouts')
     .select(`
@@ -143,45 +134,81 @@ async function WorkoutList({ userId }: { userId: string }) {
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
-  if (error) {
-    return <p className="text-red-500 text-center py-4">Error loading workouts.</p>
-  }
+  if (error) return <p className="text-red-500 text-center py-4">Error loading workouts.</p>
 
-  if (!workouts || workouts.length === 0) {
-    return <p className="text-gray-500 text-center py-8 bg-white rounded-2xl border border-dashed border-gray-300">No history found. Time to break a sweat!</p>
-  }
+  const safeWorkouts = workouts || []
+  
+  // Separate the single active workout from the history
+  const activeWorkout = safeWorkouts.find(w => w.total_duration_mins === null)
+  const historyWorkouts = safeWorkouts.filter(w => w.total_duration_mins !== null)
 
   return (
-    <ul className="space-y-3">
-      {workouts.map((workout) => {
-        const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-        
-        // Figure out what kind of workout this actually was based on child tables
-        const hasRunning = workout.running_logs && workout.running_logs.length > 0
-        const hasStrength = workout.strength_logs && workout.strength_logs.length > 0
-        
-        let tags = []
-        if (hasRunning) tags.push('🏃 Cardio')
-        if (hasStrength) tags.push('🏋️ Strength')
-        if (!hasRunning && !hasStrength) tags.push('📝 Empty Session')
+    <>
+      {/* THE HERO SECTION */}
+      <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        {activeWorkout ? (
+          <>
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Session in progress</h2>
+                <p className="text-sm text-gray-500">You have an active workout running.</p>
+              </div>
+              <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse mt-2"></div>
+            </div>
+            <Link href={`/workout/${activeWorkout.id}`} className="w-full bg-green-600 text-white font-bold rounded-xl py-4 flex items-center justify-center gap-2 hover:bg-green-700 active:scale-[0.98] transition-all shadow-md">
+              Resume Workout
+            </Link>
+          </  >
+        ) : (
+          <>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Ready to train?</h2>
+            <p className="text-sm text-gray-500 mb-6">Start an empty session to log strength, 4x4 intervals, or a hybrid workout.</p>
+            <form action={startWorkout}>
+              <button type="submit" className="w-full bg-black text-white font-bold rounded-xl py-4 flex items-center justify-center gap-2 hover:bg-gray-800 active:scale-[0.98] transition-all shadow-md">
+                <span className="text-xl">+</span> Start Empty Workout
+              </button>
+            </form>
+          </>
+        )}
+      </section>
 
-        return (
-          <li key={workout.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <strong className="block text-gray-900 font-bold">{workout.title}</strong>
-              <span className="text-xs text-gray-400">{date}</span>
-            </div>
-            
-            <div className="flex gap-2">
-              {tags.map(tag => (
-                <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+      {/* THE HISTORY SECTION */}
+      <section>
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Training History</h3>
+        {historyWorkouts.length === 0 ? (
+          <p className="text-gray-500 text-center py-8 bg-white rounded-2xl border border-dashed border-gray-300">No history found. Time to break a sweat!</p>
+        ) : (
+          <ul className="space-y-3">
+            {historyWorkouts.map((workout) => {
+              const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              const hasRunning = workout.running_logs && workout.running_logs.length > 0
+              const hasStrength = workout.strength_logs && workout.strength_logs.length > 0
+              
+              let tags = []
+              if (hasRunning) tags.push('🏃 Cardio')
+              if (hasStrength) tags.push('🏋️ Strength')
+              if (!hasRunning && !hasStrength) tags.push('📝 Empty Session')
+
+              return (
+                <li key={workout.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <strong className="block text-gray-900 font-bold">{workout.title}</strong>
+                    <span className="text-xs text-gray-400">{date}</span>
+                  </div>
+                  <div className="flex gap-2 mb-2">
+                    {tags.map(tag => (
+                      <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 font-medium">{workout.total_duration_mins} mins</p>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+    </>
   )
 }
