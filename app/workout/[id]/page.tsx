@@ -14,8 +14,9 @@ export default function ActiveWorkoutPage({
 }: { 
   params: Promise<{ id: string }> 
 }) {
+  // Reduced bottom padding (pb-24 -> pb-12) since the sticky button is gone
   return (
-    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-24 relative">
+    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-12 relative">
       <Suspense fallback={
         <div className="flex flex-col items-center justify-center pt-32 space-y-4 animate-pulse">
           <div className="h-8 w-48 bg-gray-200 rounded-lg"></div>
@@ -52,8 +53,6 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   if (error || !workout) redirect('/')
 
-  // THE FIX: I removed the hostile redirect line here!
-  // We simply track the state so the UI knows how to behave.
   const isFinished = workout.total_duration_mins !== null
 
   const { data: allExercises } = await supabase
@@ -81,7 +80,19 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
         
-        <div className="flex-shrink-0">
+        {/* THE NEW HEADER ACTIONS GROUP */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {!isFinished && (
+            <form action={finishWorkout}>
+              <input type="hidden" name="workout_id" value={workout.id} />
+              <button 
+                type="submit" 
+                className="bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-green-600 transition-colors shadow-sm active:scale-95"
+              >
+                Finish
+              </button>
+            </form>
+          )}
           <WorkoutOptions workoutId={workout.id} currentTitle={workout.title} />
         </div>
       </header>
@@ -92,24 +103,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           initialRunningLogs={workout.running_logs || []} 
           initialStrengthLogs={workout.strength_logs || []}
           exercises={allExercises || []}
-          // Optional: We could pass isFinished here to hide the "+ Add" buttons on historical workouts!
         />
       </div>
-
-      {/* Only show the Finish button if the workout is actually active */}
-      {!isFinished && (
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pointer-events-none">
-          <form action={finishWorkout} className="max-w-md mx-auto pointer-events-auto">
-            <input type="hidden" name="workout_id" value={workout.id} />
-            <button 
-              type="submit" 
-              className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-lg hover:bg-gray-800 active:scale-[0.98] transition-all"
-            >
-              Finish Workout
-            </button>
-          </form>
-        </div>
-      )}
     </>
   )
 }
