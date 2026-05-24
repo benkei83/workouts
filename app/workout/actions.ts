@@ -14,7 +14,7 @@ export async function saveCardioLog(formData: FormData) {
   const distanceRaw = formData.get('distance')
   const speedRaw = formData.get('average_speed')
   const inclineRaw = formData.get('incline')
-  const legsRaw = formData.get('legs') as string // NEW: Grab the stringified legs
+  const legsRaw = formData.get('legs') as string 
 
   if (!workoutId || !durationRaw) return { error: 'Missing required fields' }
 
@@ -23,7 +23,6 @@ export async function saveCardioLog(formData: FormData) {
   let finalSpeed = speedRaw ? parseFloat(speedRaw as string) : null
   const finalIncline = inclineRaw ? parseFloat(inclineRaw as string) : null
 
-  // 1. Insert the parent header into running_logs and RETURN the new ID
   const { data: runningLog, error: logError } = await supabase.from('running_logs').insert({
     workout_id: workoutId,
     environment: environment,
@@ -39,7 +38,6 @@ export async function saveCardioLog(formData: FormData) {
     return { error: 'Failed to save cardio log' }
   }
 
-  // 2. If this was an interval session, bulk insert the individual legs
   if (sessionType === 'interval' && legsRaw) {
     const legs = JSON.parse(legsRaw)
     
@@ -64,48 +62,41 @@ export async function saveCardioLog(formData: FormData) {
   return { success: true }
 }
 
-
-export async function saveStrengthExercise(workoutId: string, exerciseId: string, sets: any[]) {
+export async function saveStrengthExercise(
+  workoutId: string, 
+  exerciseId: string, 
+  sets: { weight: number, reps: number }[]
+) {
   const supabase = await createClient()
 
-  // 1. Check if a strength_log header already exists for this workout
-  let { data: strengthLog } = await supabase
+  const { data: strengthLog, error: logError } = await supabase
     .from('strength_logs')
+    .insert({ workout_id: workoutId })
     .select('id')
-    .eq('workout_id', workoutId)
     .single()
 
-  // 2. If not, create one
-  if (!strengthLog) {
-    const { data: newLog, error: logError } = await supabase
-      .from('strength_logs')
-      .insert({ workout_id: workoutId, program_name: 'Custom Session' })
-      .select('id')
-      .single()
-      
-    if (logError || !newLog) return { error: 'Failed to create strength header' }
-    strengthLog = newLog
+  if (logError || !strengthLog) {
+    console.error("Failed to create strength log:", logError)
+    return { error: 'Failed to create strength log' }
   }
 
-  // 3. Format the sets for bulk insertion
+  // THE FIX: We map over the sets and explicitly pass set_number 
   const setsToInsert = sets.map((set, index) => ({
     strength_log_id: strengthLog.id,
     exercise_id: exerciseId,
-    set_number: index + 1,
-    target_weight: set.weight, // For now, we assume target = actual
-    target_reps: set.reps,
+    set_number: index + 1, 
     actual_weight: set.weight,
     actual_reps: set.reps
   }))
 
-  // 4. Bulk insert the sets
   const { error: setsError } = await supabase
     .from('strength_sets')
     .insert(setsToInsert)
 
   if (setsError) {
-    console.error(setsError)
-    return { error: 'Failed to save sets' }
+    console.error("Supabase sets error:", setsError)
+    await supabase.from('strength_logs').delete().eq('id', strengthLog.id)
+    return { error: setsError.message } 
   }
 
   revalidatePath(`/workout/${workoutId}`)
@@ -118,7 +109,6 @@ export async function finishWorkout(formData: FormData) {
 
   const supabase = await createClient()
 
-  // 1. Get the start time
   const { data: workout } = await supabase
     .from('workouts')
     .select('created_at')
@@ -126,86 +116,23 @@ export async function finishWorkout(formData: FormData) {
     .single()
 
   if (workout) {
-    // 2. Calculate the difference in minutes
     const startTime = new Date(workout.created_at).getTime()
     const now = new Date().getTime()
     const durationMins = Math.max(1, Math.round((now - startTime) / 60000))
 
-    // 3. Stamp the total duration to mark it as "Completed"
     await supabase
       .from('workouts')
       .update({ total_duration_mins: durationMins })
       .eq('id', workoutId)
   }
 
-  // 4. Refresh the home page data and navigate there
   revalidatePath('/')
   redirect('/')
-}
-
-// Add a completely new custom exercise to the database
-export async function createCustomExercise(formData: FormData) {
-  const name = formData.get('name') as string
-  const category = formData.get('category') as string
-  if (!name || !category) return { error: 'Missing fields' }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Unauthorized' }
-
-  const { error } = await supabase.from('exercises').insert({
-    name,
-    category,
-    user_id: user.id // Attached strictly to you!
-  })
-
-  if (error) return { error: 'Failed to create exercise' }
-  revalidatePath('/exercises') // Assuming we build an /exercises management page next
-  return { success: true }
-}
-
-// Update settings using the SCD Type 2 pattern (preserves history)
-export async function updateExerciseSettings(exerciseId: string, settings: any) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Unauthorized' }
-
-  // 1. Deactivate the current active settings for this specific exercise
-  await supabase
-    .from('user_exercise_settings')
-    .update({ 
-      is_active: false, 
-      valid_to: new Date().toISOString() 
-    })
-    .eq('user_id', user.id)
-    .eq('exercise_id', exerciseId)
-    .eq('is_active', true)
-
-  // 2. Insert the brand new active settings
-  const { error } = await supabase.from('user_exercise_settings').insert({
-    user_id: user.id,
-    exercise_id: exerciseId,
-    current_weight: settings.weight || null,
-    target_sets: settings.sets || null,
-    target_reps: settings.reps || null,
-    increment_step: settings.increment || 2.5,
-    is_active: true
-  })
-
-  if (error) {
-    console.error(error)
-    return { error: 'Failed to update settings' }
-  }
-
-  revalidatePath('/exercises')
-  return { success: true }
 }
 
 export async function deleteWorkout(workoutId: string) {
   const supabase = await createClient()
   
-  // Thanks to ON DELETE CASCADE, this single command wipes the workout 
-  // AND all attached logs, sets, and legs permanently.
   const { error } = await supabase
     .from('workouts')
     .delete()
@@ -232,5 +159,77 @@ export async function renameWorkout(workoutId: string, newTitle: string) {
 
   revalidatePath(`/workout/${workoutId}`)
   revalidatePath('/')
+  return { success: true }
+}
+
+export async function deleteRunningLog(logId: string, workoutId: string) {
+  const supabase = await createClient()
+  
+  const { error } = await supabase.from('running_logs').delete().eq('id', logId)
+  if (error) console.error("Failed to delete cardio:", error)
+
+  revalidatePath(`/workout/${workoutId}`)
+}
+
+export async function deleteStrengthLog(logId: string, workoutId: string) {
+  const supabase = await createClient()
+  
+  const { error } = await supabase.from('strength_logs').delete().eq('id', logId)
+  if (error) console.error("Failed to delete strength:", error)
+
+  revalidatePath(`/workout/${workoutId}`)
+}
+
+export async function createCustomExercise(formData: FormData) {
+  const name = formData.get('name') as string
+  const category = formData.get('category') as string
+  if (!name || !category) return { error: 'Missing fields' }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase.from('exercises').insert({
+    name,
+    category,
+    user_id: user.id 
+  })
+
+  if (error) return { error: 'Failed to create exercise' }
+  revalidatePath('/exercises') 
+  return { success: true }
+}
+
+export async function updateExerciseSettings(exerciseId: string, settings: any) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  await supabase
+    .from('user_exercise_settings')
+    .update({ 
+      is_active: false, 
+      valid_to: new Date().toISOString() 
+    })
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .eq('is_active', true)
+
+  const { error } = await supabase.from('user_exercise_settings').insert({
+    user_id: user.id,
+    exercise_id: exerciseId,
+    current_weight: settings.weight || null,
+    target_sets: settings.sets || null,
+    target_reps: settings.reps || null,
+    increment_step: settings.increment || 2.5,
+    is_active: true
+  })
+
+  if (error) {
+    console.error(error)
+    return { error: 'Failed to update settings' }
+  }
+
+  revalidatePath('/exercises')
   return { success: true }
 }

@@ -92,7 +92,7 @@ async function Dashboard() {
 
   return (
     <>
-      <header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
+<header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div>
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
           <p className="text-gray-500 text-xs mt-0.5">
@@ -101,11 +101,17 @@ async function Dashboard() {
         </div>
         
         {user ? (
-          <form action={signOut}>
-            <button className="text-sm font-bold text-gray-500 hover:text-black transition-colors">
-              Sign Out
-            </button>
-          </form>
+          <div className="flex items-center gap-4">
+            {/* NEW: Link to the Exercise Dictionary */}
+            <Link href="/exercises" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
+              Exercises
+            </Link>
+            <form action={signOut}>
+              <button className="text-sm font-bold text-gray-500 hover:text-black transition-colors">
+                Sign Out
+              </button>
+            </form>
+          </div>
         ) : (
           <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
             Sign In

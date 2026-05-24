@@ -1,15 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
+import { deleteRunningLog, deleteStrengthLog } from '../actions'
 
-// NEW: Explicitly define the shape of our grouped data for the strict Vercel compiler
-type GroupedLift = {
+type StrengthCard = {
+  logId: string
+  exerciseId: string
   name: string
-  sets: number
+  setsCount: number
   maxWeight: number
   repsArray: number[]
+  rawSets: { weight: number, reps: number }[]
 }
 
 export function InteractiveCanvas({ 
@@ -24,38 +27,70 @@ export function InteractiveCanvas({
   exercises: any[]
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength'>('none')
+  const [editData, setEditData] = useState<any>(null) // NEW: Holds the data being edited
+  const [isPending, startTransition] = useTransition()
 
-  // Safely flatten the sets array, defaulting to empty if null
-  const completedExercises = initialStrengthLogs.flatMap(log => log.strength_sets || [])
-  
-  // Group the sets by exercise name using our new explicit type
-  const groupedLifts = completedExercises.reduce((acc, set) => {
-    const name = set.exercises?.name || 'Unknown Exercise'
-    if (!acc[name]) {
-      acc[name] = { name, sets: 0, maxWeight: 0, repsArray: [] }
-    }
-    acc[name].sets += 1
-    acc[name].repsArray.push(set.actual_reps)
-    if (set.actual_weight > acc[name].maxWeight) {
-      acc[name].maxWeight = set.actual_weight
-    }
-    return acc
-  }, {} as Record<string, GroupedLift>)
+  // Map the logs directly and securely extract all raw data for editing
+  const strengthCards: StrengthCard[] = initialStrengthLogs
+    .filter(log => log.strength_sets && log.strength_sets.length > 0)
+    .map(log => {
+      const sets = log.strength_sets
+      const name = sets[0].exercises?.name || 'Unknown Exercise'
+      const maxWeight = Math.max(...sets.map((s: any) => s.actual_weight))
+      
+      return {
+        logId: log.id,
+        exerciseId: sets[0].exercise_id,
+        name,
+        setsCount: sets.length,
+        maxWeight,
+        repsArray: sets.map((s: any) => s.actual_reps),
+        rawSets: sets.map((s: any) => ({ weight: s.actual_weight, reps: s.actual_reps }))
+      }
+    })
 
-  // NEW: Explicitly cast the resulting array so TypeScript doesn't panic
-  const groupedLiftsArray = Object.values(groupedLifts) as GroupedLift[]
-  
-  const isCanvasEmpty = initialRunningLogs.length === 0 && completedExercises.length === 0
+  const isCanvasEmpty = initialRunningLogs.length === 0 && strengthCards.length === 0
+
+  // --- HANDLERS ---
+  const handleDeleteCardio = (logId: string) => {
+    if (window.confirm('Delete this cardio session?')) {
+      startTransition(() => { deleteRunningLog(logId, workoutId) })
+    }
+  }
+
+  const handleDeleteStrength = (logId: string) => {
+    if (window.confirm('Delete this exercise?')) {
+      startTransition(() => { deleteStrengthLog(logId, workoutId) })
+    }
+  }
+
+  const closeForm = () => {
+    setActiveModule('none')
+    setEditData(null)
+  }
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 transition-opacity duration-200 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
       
       {/* 1. RENDER COMPLETED CARDIO */}
       {initialRunningLogs.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Completed Cardio</h3>
           {initialRunningLogs.map((log) => (
-            <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+            <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center relative group">
+              
+              {/* ACTION BUTTONS */}
+              <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+                <button 
+                  onClick={() => { setEditData(log); setActiveModule('cardio') }}
+                  className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
+                >✏️</button>
+                <button 
+                  onClick={() => handleDeleteCardio(log.id)}
+                  className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
+                >✕</button>
+              </div>
+
               <div>
                 <p className="font-bold text-gray-900 capitalize flex items-center gap-2">
                   🏃 {log.environment} {log.session_type}
@@ -65,7 +100,7 @@ export function InteractiveCanvas({
                   {log.average_incline ? ` @ ${log.average_incline}% inc` : ''}
                 </p>
               </div>
-              <div className="text-right">
+              <div className="text-right pr-2">
                 <p className="font-bold text-gray-900">{log.distance_km} <span className="text-xs font-normal text-gray-500">km</span></p>
                 <p className="text-sm text-gray-500">{log.average_speed} <span className="text-xs">km/h</span></p>
               </div>
@@ -75,19 +110,32 @@ export function InteractiveCanvas({
       )}
 
       {/* 2. RENDER COMPLETED LIFTS */}
-      {groupedLiftsArray.length > 0 && (
+      {strengthCards.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mt-6">Completed Lifts</h3>
-          {groupedLiftsArray.map((lift, index) => (
-             <div key={index} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1">
-               <div className="flex justify-between items-center">
+          {strengthCards.map((lift) => (
+             <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
+               
+               {/* ACTION BUTTONS */}
+               <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+                 <button 
+                   onClick={() => { setEditData(lift); setActiveModule('strength') }}
+                   className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
+                 >✏️</button>
+                 <button 
+                   onClick={() => handleDeleteStrength(lift.logId)}
+                   className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
+                 >✕</button>
+               </div>
+
+               <div className="flex justify-between items-center pr-4">
                  <p className="font-bold text-gray-900 text-[15px]">{lift.name}</p>
                  <p className="font-bold text-gray-900">
                    {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
                  </p>
                </div>
                <p className="text-sm text-gray-500 font-medium">
-                 {lift.sets} sets • {lift.repsArray.join('-')} reps
+                 {lift.setsCount} sets • {lift.repsArray.join('-')} reps
                </p>
              </div>
           ))}
@@ -105,20 +153,11 @@ export function InteractiveCanvas({
           )}
 
           <div className="grid grid-cols-2 gap-4 mt-6">
-            <button 
-              onClick={() => setActiveModule('cardio')}
-              className="bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-xl shadow-sm hover:border-black transition-colors flex flex-col items-center gap-2"
-            >
-              <span className="text-2xl">🏃</span>
-              <span className="text-sm">Add Cardio</span>
+            <button onClick={() => setActiveModule('cardio')} className="bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-xl shadow-sm hover:border-black transition-colors flex flex-col items-center gap-2">
+              <span className="text-2xl">🏃</span><span className="text-sm">Add Cardio</span>
             </button>
-            
-            <button 
-              onClick={() => setActiveModule('strength')}
-              className="bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-xl shadow-sm hover:border-black transition-colors flex flex-col items-center gap-2"
-            >
-              <span className="text-2xl">🏋️</span>
-              <span className="text-sm">Add Strength</span>
+            <button onClick={() => setActiveModule('strength')} className="bg-white border border-gray-200 text-gray-900 font-bold py-4 rounded-xl shadow-sm hover:border-black transition-colors flex flex-col items-center gap-2">
+              <span className="text-2xl">🏋️</span><span className="text-sm">Add Strength</span>
             </button>
           </div>
         </>
@@ -126,17 +165,12 @@ export function InteractiveCanvas({
 
       {/* 4. ACTIVE FORMS */}
       {activeModule === 'cardio' && (
-         <CardioForm workoutId={workoutId} onCancel={() => setActiveModule('none')} />
+         <CardioForm workoutId={workoutId} onCancel={closeForm} editData={editData} />
       )}
       
       {activeModule === 'strength' && (
-         <StrengthForm 
-           workoutId={workoutId} 
-           exercises={exercises} 
-           onCancel={() => setActiveModule('none')} 
-         />
+         <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} editData={editData} />
       )}
-      
     </div>
   )
 }
