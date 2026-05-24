@@ -1,37 +1,36 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import Link from 'next/link'
 
 // ==========================================
 // 1. SERVER ACTIONS
 // ==========================================
-async function logNewRun(formData: FormData) {
+async function startWorkout() {
   'use server'
   const supabase = await createClient()
   
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 
 
-  const distance = formData.get('distance')
-  const duration = formData.get('duration')
-  if (!distance || !duration) return
-
-  const { data: workout, error: workoutError } = await supabase
+  // Create a new empty workout bucket
+  const { data: workout, error } = await supabase
     .from('workouts')
-    .insert({ title: 'Outdoor Run', type: 'running', user_id: user.id })
+    .insert({ 
+      user_id: user.id, 
+      title: 'Active Session' // We can let the user rename this later
+    })
     .select()
     .single()
 
-  if (workout && !workoutError) {
-    await supabase.from('running_logs').insert({
-      workout_id: workout.id,
-      distance_km: parseFloat(distance as string),
-      duration_seconds: parseInt(duration as string) * 60
-    })
+  if (error || !workout) {
+    console.error("Failed to start workout:", error)
+    return
   }
-  
-  revalidatePath('/')
+
+  // Instantly route the user to the new Active Workout Canvas
+  redirect(`/workout/${workout.id}`)
 }
 
 async function signOut() {
@@ -49,7 +48,7 @@ export default function HomePage() {
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
       <Suspense fallback={
         <div className="flex justify-center items-center h-screen">
-          <p className="text-gray-500 font-medium animate-pulse">Loading tracker...</p>
+          <p className="text-gray-500 font-medium animate-pulse">Loading dashboard...</p>
         </div>
       }>
         <Dashboard />
@@ -69,7 +68,7 @@ async function Dashboard() {
     <>
       <header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
         <div>
-          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Tracker</h1>
+          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
           <p className="text-gray-500 text-xs mt-0.5">
             {user ? `Logged in as ${user.email}` : 'Not logged in'}
           </p>
@@ -90,48 +89,31 @@ async function Dashboard() {
       
       <div className="px-6 mt-6 space-y-8">
         
-        {!user && (
+        {!user ? (
           <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl flex items-center gap-2">
             <span>⚠️</span> You must be signed in to log a workout.
           </div>
+        ) : (
+          /* NEW: The Hero "Start" Section */
+          <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Ready to train?</h2>
+            <p className="text-sm text-gray-500 mb-6">Start an empty session to log strength, 4x4 intervals, or a hybrid workout.</p>
+            
+            <form action={startWorkout}>
+              <button 
+                type="submit" 
+                className="w-full bg-black text-white font-bold rounded-xl py-4 flex items-center justify-center gap-2 hover:bg-gray-800 active:scale-[0.98] transition-all shadow-md"
+              >
+                <span className="text-xl">+</span> Start Empty Workout
+              </button>
+            </form>
+          </section>
         )}
 
-        <section className={`bg-white p-6 rounded-2xl shadow-sm border border-gray-100 transition-opacity ${!user ? 'opacity-50 pointer-events-none' : ''}`}>
-          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            🏃 Log a Run
-          </h2>
-          <form action={logNewRun} className="space-y-4">
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Distance (km)</label>
-                <input 
-                  type="number" step="0.1" name="distance" placeholder="5.0" required 
-                  className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition-all"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time (min)</label>
-                <input 
-                  type="number" name="duration" placeholder="25" required 
-                  className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black transition-all"
-                />
-              </div>
-            </div>
-            <button 
-              type="submit" 
-              className="w-full bg-black text-white font-bold rounded-xl py-3.5 mt-2 hover:bg-gray-800 active:scale-[0.98] transition-all"
-            >
-              Save Workout
-            </button>
-          </form>
-        </section>
-
-        {/* NEW: Only render this entire section IF a user exists */}
         {user && (
           <section>
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Recent History</h3>
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Training History</h3>
             <Suspense fallback={<div className="animate-pulse h-20 bg-gray-200 rounded-xl"></div>}>
-              {/* NEW: Pass the user's specific ID down into the database component */}
               <WorkoutList userId={user.id} />
             </Suspense>
           </section>
@@ -144,14 +126,21 @@ async function Dashboard() {
 // ==========================================
 // 4. DATABASE FETCHING COMPONENT
 // ==========================================
-// NEW: Accept the userId as a required property
 async function WorkoutList({ userId }: { userId: string }) {
   const supabase = await createClient()
   
+  // NEW: Fetch the workout bucket, plus any associated running OR strength logs
   const { data: workouts, error } = await supabase
     .from('workouts')
-    .select('*, running_logs(*)')
-    .eq('user_id', userId) // NEW: The SQL WHERE clause!
+    .select(`
+      id,
+      title,
+      created_at,
+      total_duration_mins,
+      running_logs ( id, distance_km ),
+      strength_logs ( id )
+    `)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -159,31 +148,37 @@ async function WorkoutList({ userId }: { userId: string }) {
   }
 
   if (!workouts || workouts.length === 0) {
-    return <p className="text-gray-500 text-center py-8 bg-white rounded-2xl border border-dashed border-gray-300">No workouts yet. Get out there!</p>
+    return <p className="text-gray-500 text-center py-8 bg-white rounded-2xl border border-dashed border-gray-300">No history found. Time to break a sweat!</p>
   }
 
   return (
     <ul className="space-y-3">
       {workouts.map((workout) => {
         const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-        const runLog = workout.running_logs?.[0]
+        
+        // Figure out what kind of workout this actually was based on child tables
+        const hasRunning = workout.running_logs && workout.running_logs.length > 0
+        const hasStrength = workout.strength_logs && workout.strength_logs.length > 0
+        
+        let tags = []
+        if (hasRunning) tags.push('🏃 Cardio')
+        if (hasStrength) tags.push('🏋️ Strength')
+        if (!hasRunning && !hasStrength) tags.push('📝 Empty Session')
 
         return (
-          <li key={workout.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-            <div>
+          <li key={workout.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+            <div className="flex items-center justify-between mb-2">
               <strong className="block text-gray-900 font-bold">{workout.title}</strong>
               <span className="text-xs text-gray-400">{date}</span>
             </div>
-            {runLog && (
-              <div className="text-right">
-                <div className="font-bold text-gray-900">
-                  {runLog.distance_km} <span className="text-xs text-gray-500 font-normal">km</span>
-                </div>
-                <div className="text-xs text-gray-500">
-                  {Math.round(runLog.duration_seconds / 60)} mins
-                </div>
-              </div>
-            )}
+            
+            <div className="flex gap-2">
+              {tags.map(tag => (
+                <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
+                  {tag}
+                </span>
+              ))}
+            </div>
           </li>
         )
       })}
