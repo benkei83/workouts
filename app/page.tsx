@@ -23,6 +23,7 @@ async function startWorkout() {
     .single()
 
   if (existingWorkout) {
+    revalidatePath('/')
     redirect(`/workout/${existingWorkout.id}`)
   }
 
@@ -54,6 +55,7 @@ async function startWorkout() {
     return
   }
 
+  revalidatePath('/')
   redirect(`/workout/${workout.id}`)
 }
 
@@ -199,20 +201,23 @@ async function WorkoutManager({ userId }: { userId: string }) {
               if (hasStrength) tags.push('🏋️ Strength')
               if (!hasRunning && !hasStrength) tags.push('📝 Empty Session')
 
+              // THE FIX: The <li> is now the parent, and the <Link> is the child!
               return (
-                <li key={workout.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <strong className="block text-gray-900 font-bold">{workout.title}</strong>
-                    <span className="text-xs text-gray-400">{date}</span>
-                  </div>
-                  <div className="flex gap-2 mb-2">
-                    {tags.map(tag => (
-                      <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 font-medium">{workout.total_duration_mins} mins</p>
+                <li key={workout.id}>
+                  <Link href={`/workout/${workout.id}`} className="block bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-gray-300 transition-colors group cursor-pointer">
+                    <div className="flex items-center justify-between mb-2">
+                      <strong className="block text-gray-900 font-bold">{workout.title}</strong>
+                      <span className="text-xs text-gray-400">{date}</span>
+                    </div>
+                    <div className="flex gap-2 mb-2">
+                      {tags.map(tag => (
+                        <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 font-medium">{workout.total_duration_mins} mins</p>
+                  </Link>
                 </li>
               )
             })}

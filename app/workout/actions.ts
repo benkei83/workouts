@@ -200,3 +200,37 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
   revalidatePath('/exercises')
   return { success: true }
 }
+
+export async function deleteWorkout(workoutId: string) {
+  const supabase = await createClient()
+  
+  // Thanks to ON DELETE CASCADE, this single command wipes the workout 
+  // AND all attached logs, sets, and legs permanently.
+  const { error } = await supabase
+    .from('workouts')
+    .delete()
+    .eq('id', workoutId)
+
+  if (error) {
+    console.error("Failed to delete workout:", error)
+    return { error: 'Failed to delete workout' }
+  }
+
+  revalidatePath('/')
+  redirect('/')
+}
+
+export async function renameWorkout(workoutId: string, newTitle: string) {
+  const supabase = await createClient()
+  
+  const { error } = await supabase
+    .from('workouts')
+    .update({ title: newTitle })
+    .eq('id', workoutId)
+
+  if (error) return { error: 'Failed to rename workout' }
+
+  revalidatePath(`/workout/${workoutId}`)
+  revalidatePath('/')
+  return { success: true }
+}
