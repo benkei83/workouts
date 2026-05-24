@@ -142,3 +142,61 @@ export async function finishWorkout(formData: FormData) {
   revalidatePath('/')
   redirect('/')
 }
+
+// Add a completely new custom exercise to the database
+export async function createCustomExercise(formData: FormData) {
+  const name = formData.get('name') as string
+  const category = formData.get('category') as string
+  if (!name || !category) return { error: 'Missing fields' }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase.from('exercises').insert({
+    name,
+    category,
+    user_id: user.id // Attached strictly to you!
+  })
+
+  if (error) return { error: 'Failed to create exercise' }
+  revalidatePath('/exercises') // Assuming we build an /exercises management page next
+  return { success: true }
+}
+
+// Update settings using the SCD Type 2 pattern (preserves history)
+export async function updateExerciseSettings(exerciseId: string, settings: any) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  // 1. Deactivate the current active settings for this specific exercise
+  await supabase
+    .from('user_exercise_settings')
+    .update({ 
+      is_active: false, 
+      valid_to: new Date().toISOString() 
+    })
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .eq('is_active', true)
+
+  // 2. Insert the brand new active settings
+  const { error } = await supabase.from('user_exercise_settings').insert({
+    user_id: user.id,
+    exercise_id: exerciseId,
+    current_weight: settings.weight || null,
+    target_sets: settings.sets || null,
+    target_reps: settings.reps || null,
+    increment_step: settings.increment || 2.5,
+    is_active: true
+  })
+
+  if (error) {
+    console.error(error)
+    return { error: 'Failed to update settings' }
+  }
+
+  revalidatePath('/exercises')
+  return { success: true }
+}
