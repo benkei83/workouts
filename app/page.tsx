@@ -14,7 +14,7 @@ async function startWorkout() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return 
 
-  // 1. Check if an active workout already exists (duration is null)
+  // 1. Check if an active workout already exists
   const { data: existingWorkout } = await supabase
     .from('workouts')
     .select('id')
@@ -22,17 +22,29 @@ async function startWorkout() {
     .is('total_duration_mins', null)
     .single()
 
-  // 2. If one exists, redirect to it instead of creating a new one
   if (existingWorkout) {
     redirect(`/workout/${existingWorkout.id}`)
   }
 
-  // 3. Otherwise, create a new empty workout bucket
+  // 2. Generate a dynamic Strava-style title
+  const now = new Date()
+  const hour = now.getHours()
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const dayName = days[now.getDay()]
+
+  let timeOfDay = 'Night'
+  if (hour >= 4 && hour < 12) timeOfDay = 'Morning'
+  else if (hour >= 12 && hour < 17) timeOfDay = 'Afternoon'
+  else if (hour >= 17 && hour < 22) timeOfDay = 'Evening'
+
+  const dynamicTitle = `${dayName} ${timeOfDay} Workout`
+
+  // 3. Create a new empty workout bucket with the smart title
   const { data: workout, error } = await supabase
     .from('workouts')
     .insert({ 
       user_id: user.id, 
-      title: 'Active Session'
+      title: dynamicTitle
     })
     .select()
     .single()
@@ -94,7 +106,7 @@ async function Dashboard() {
           </form>
         ) : (
           <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
-            Sign SignIn
+            Sign In
           </Link>
         )}
       </header>
@@ -120,7 +132,6 @@ async function Dashboard() {
 async function WorkoutManager({ userId }: { userId: string }) {
   const supabase = await createClient()
   
-  // Fetch all workouts
   const { data: workouts, error } = await supabase
     .from('workouts')
     .select(`
@@ -138,7 +149,6 @@ async function WorkoutManager({ userId }: { userId: string }) {
 
   const safeWorkouts = workouts || []
   
-  // Separate the single active workout from the history
   const activeWorkout = safeWorkouts.find(w => w.total_duration_mins === null)
   const historyWorkouts = safeWorkouts.filter(w => w.total_duration_mins !== null)
 
@@ -158,7 +168,7 @@ async function WorkoutManager({ userId }: { userId: string }) {
             <Link href={`/workout/${activeWorkout.id}`} className="w-full bg-green-600 text-white font-bold rounded-xl py-4 flex items-center justify-center gap-2 hover:bg-green-700 active:scale-[0.98] transition-all shadow-md">
               Resume Workout
             </Link>
-          </  >
+          </>
         ) : (
           <>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Ready to train?</h2>

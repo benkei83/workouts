@@ -54,7 +54,6 @@ export default function CardioForm({
 
   // --- HANDLERS ---
   
-  // Updates a single individual leg (e.g. if you want the last work leg to be faster)
   const updateLeg = (id: string, field: keyof IntervalLeg, delta: number) => {
     setLegs(legs.map(leg => {
       if (leg.id === id) {
@@ -65,7 +64,6 @@ export default function CardioForm({
     }))
   }
 
-  // Master Sync: Reads the first leg of that type, applies the delta, and overwrites ALL legs of that type
   const syncAndUpdateAll = (type: 'work' | 'rest', field: keyof IntervalLeg, delta: number) => {
     const referenceLeg = type === 'work' ? firstWork : firstRest
     if (!referenceLeg) return
@@ -191,12 +189,12 @@ export default function CardioForm({
                         <button type="button" onClick={() => syncAndUpdateAll('work', 'duration', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
                       </div>
                       <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700">
-                        <button type="button" onClick={() => syncAndUpdateAll('work', 'speed', -0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-l-lg">-</button>
+                        <button type="button" onClick={() => syncAndUpdateAll('work', 'speed', -0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-l-lg">-</button>
                         <div className="flex-1 text-center leading-tight">
                           <div className="font-bold text-white text-sm">{firstWork.speed}</div>
                           <div className="text-[9px] text-gray-500 font-semibold uppercase">km/h</div>
                         </div>
-                        <button type="button" onClick={() => syncAndUpdateAll('work', 'speed', 0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
+                        <button type="button" onClick={() => syncAndUpdateAll('work', 'speed', 0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
                       </div>
                       {environment === 'indoor' ? (
                         <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700">
@@ -229,12 +227,12 @@ export default function CardioForm({
                         <button type="button" onClick={() => syncAndUpdateAll('rest', 'duration', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
                       </div>
                       <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700">
-                        <button type="button" onClick={() => syncAndUpdateAll('rest', 'speed', -0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-l-lg">-</button>
+                        <button type="button" onClick={() => syncAndUpdateAll('rest', 'speed', -0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-l-lg">-</button>
                         <div className="flex-1 text-center leading-tight">
                           <div className="font-bold text-white text-sm">{firstRest.speed}</div>
                           <div className="text-[9px] text-gray-500 font-semibold uppercase">km/h</div>
                         </div>
-                        <button type="button" onClick={() => syncAndUpdateAll('rest', 'speed', 0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
+                        <button type="button" onClick={() => syncAndUpdateAll('rest', 'speed', 0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-700 rounded-r-lg">+</button>
                       </div>
                       {environment === 'indoor' ? (
                         <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700">
@@ -278,12 +276,12 @@ export default function CardioForm({
                       <button type="button" onClick={() => updateLeg(leg.id, 'duration', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
                     </div>
                     <div className="flex items-center bg-white rounded-lg border border-gray-200">
-                      <button type="button" onClick={() => updateLeg(leg.id, 'speed', -0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                      <button type="button" onClick={() => updateLeg(leg.id, 'speed', -0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
                       <div className="flex-1 text-center leading-tight">
                         <div className="font-bold text-gray-900 text-sm">{leg.speed}</div>
                         <div className="text-[9px] text-gray-400 font-semibold uppercase">km/h</div>
                       </div>
-                      <button type="button" onClick={() => updateLeg(leg.id, 'speed', 0.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                      <button type="button" onClick={() => updateLeg(leg.id, 'speed', 0.1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
                     </div>
                     {environment === 'indoor' ? (
                       <div className="flex items-center bg-white rounded-lg border border-gray-200">
