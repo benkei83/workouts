@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { saveStrengthExercise, deleteStrengthLog } from '@/app/workout/actions'
+import { saveStrengthExercise, deleteStrengthLog, createCustomExercise } from '@/app/workout/actions'
 
 type SetData = { weight: number, reps: number }
 type Exercise = { id: string, name: string }
@@ -25,16 +25,41 @@ export default function StrengthForm({
 }) {
   const [selectedExercise, setSelectedExercise] = useState(editData?.exerciseId || exercises[0]?.id || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // NEW: State for the inline creator
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
 
   const [sets, setSets] = useState<SetData[]>(() => {
     if (editData?.rawSets) return editData.rawSets
-    
     return Array.from({ length: initialSets }, () => ({
       weight: initialWeight,
       reps: initialReps
     }))
   })
 
+  // --- INLINE CREATION LOGIC ---
+  const handleInlineCreate = async () => {
+    const input = document.getElementById('new-exercise-input') as HTMLInputElement
+    const name = input?.value.trim()
+    if (!name) return
+
+    setIsSubmitting(true)
+    const formData = new FormData()
+    formData.append('name', name)
+    formData.append('category', 'strength')
+
+    const res = await createCustomExercise(formData)
+    
+    if (res?.success && res.id) {
+      setSelectedExercise(res.id) // Instantly auto-select the new creation
+      setIsCreatingNew(false)
+    } else {
+      alert("Failed to create exercise.")
+    }
+    setIsSubmitting(false)
+  }
+
+  // --- STANDARD HANDLERS ---
   const updateSet = (index: number, field: 'weight' | 'reps', delta: number) => {
     const newSets = [...sets]
     newSets[index][field] = Math.max(0, newSets[index][field] + delta)
@@ -52,20 +77,15 @@ export default function StrengthForm({
 
   const handleSave = async () => {
     setIsSubmitting(true)
+    if (editData) await deleteStrengthLog(editData.logId, workoutId)
     
-    if (editData) {
-      await deleteStrengthLog(editData.logId, workoutId)
-    }
-
     const result = await saveStrengthExercise(workoutId, selectedExercise, sets)
-    
     setIsSubmitting(false)
 
-    // THE FIX: If the database rejects it, yell at us!
     if (result?.error) {
       alert(`Database Error: ${result.error}`)
     } else {
-      onCancel() // Only close the modal if it actually saved
+      onCancel() 
     }
   }
 
@@ -78,15 +98,54 @@ export default function StrengthForm({
 
       <div className="mb-6">
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Exercise</label>
-        <select 
-          value={selectedExercise}
-          onChange={(e) => setSelectedExercise(e.target.value)}
-          className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none"
-        >
-          {exercises.map(ex => (
-            <option key={ex.id} value={ex.id}>{ex.name}</option>
-          ))}
-        </select>
+        
+        {/* NEW: Dynamic Select / Input Toggle */}
+        {!isCreatingNew ? (
+          <div className="flex gap-2">
+            <select 
+              value={selectedExercise}
+              onChange={(e) => setSelectedExercise(e.target.value)}
+              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
+            >
+              {exercises.map(ex => (
+                <option key={ex.id} value={ex.id}>{ex.name}</option>
+              ))}
+            </select>
+            <button 
+              type="button" 
+              onClick={() => setIsCreatingNew(true)} 
+              className="bg-gray-100 text-gray-600 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors shadow-sm"
+              title="Add new exercise"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input 
+              id="new-exercise-input"
+              type="text" 
+              placeholder="e.g., T-Bar Row" 
+              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black"
+              autoFocus
+            />
+            <button 
+              type="button" 
+              onClick={handleInlineCreate} 
+              disabled={isSubmitting} 
+              className="bg-black text-white font-bold px-4 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isSubmitting ? '...' : 'Save'}
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setIsCreatingNew(false)} 
+              className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 mb-6">
@@ -126,7 +185,7 @@ export default function StrengthForm({
         + Add Set
       </button>
 
-      <button type="button" onClick={handleSave} disabled={isSubmitting} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
+      <button type="button" onClick={handleSave} disabled={isSubmitting || isCreatingNew} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
         {isSubmitting ? 'Saving...' : (editData ? 'Update Exercise' : 'Save Exercise')}
       </button>
     </div>

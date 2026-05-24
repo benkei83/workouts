@@ -189,14 +189,27 @@ export async function createCustomExercise(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const { error } = await supabase.from('exercises').insert({
+  // We added .select('id').single() so we can return the ID to the form!
+  const { data, error } = await supabase.from('exercises').insert({
     name,
     category,
     user_id: user.id 
-  })
+  }).select('id').single()
 
-  if (error) return { error: 'Failed to create exercise' }
+  if (error || !data) return { error: 'Failed to create exercise' }
+  
   revalidatePath('/exercises') 
+  revalidatePath('/') // Refreshes the active canvas too
+  return { success: true, id: data.id }
+}
+
+export async function deleteExercise(exerciseId: string) {
+  const supabase = await createClient()
+  
+  const { error } = await supabase.from('exercises').delete().eq('id', exerciseId)
+  if (error) return { error: 'Failed to delete exercise' }
+  
+  revalidatePath('/exercises')
   return { success: true }
 }
 
@@ -231,5 +244,66 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
   }
 
   revalidatePath('/exercises')
+  return { success: true }
+}
+
+export async function saveSupersetLog(
+  workoutId: string, 
+  matrix: { [exerciseId: string]: { weight: number, reps: number }[] }
+) {
+  const supabase = await createClient()
+  
+  // 1. Generate a shared UUID to link these logs together
+  const supersetId = crypto.randomUUID()
+  const exerciseIds = Object.keys(matrix)
+
+  // 2. Create a parent strength_log for EACH exercise in the superset
+  // We attach the shared supersetId so the frontend knows they are grouped
+  const logsToInsert = exerciseIds.map(() => ({
+    workout_id: workoutId,
+    superset_id: supersetId
+  }))
+
+  const { data: insertedLogs, error: logsError } = await supabase
+    .from('strength_logs')
+    .insert(logsToInsert)
+    .select('id')
+
+  if (logsError || !insertedLogs || insertedLogs.length !== exerciseIds.length) {
+    console.error("Failed to create superset logs:", logsError)
+    return { error: 'Failed to initialize superset' }
+  }
+
+  // 3. Flatten the matrix into a single array of sets linked to their respective logs
+  const setsToInsert: any[] = []
+  
+  exerciseIds.forEach((exId, index) => {
+    const logId = insertedLogs[index].id
+    const sets = matrix[exId]
+
+    sets.forEach((set, setIndex) => {
+      setsToInsert.push({
+        strength_log_id: logId,
+        exercise_id: exId,
+        set_number: setIndex + 1,
+        actual_weight: set.weight,
+        actual_reps: set.reps
+      })
+    })
+  })
+
+  // 4. Fire all sets into the database in one massive insert
+  const { error: setsError } = await supabase
+    .from('strength_sets')
+    .insert(setsToInsert)
+
+  if (setsError) {
+    console.error("Supabase sets error:", setsError)
+    // ROLLBACK: If the sets fail, wipe the parent logs so we don't get ghost data
+    await supabase.from('strength_logs').delete().eq('superset_id', supersetId)
+    return { error: setsError.message }
+  }
+
+  revalidatePath(`/workout/${workoutId}`)
   return { success: true }
 }

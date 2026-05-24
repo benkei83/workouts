@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
+import { createCustomExercise, updateExerciseSettings, deleteExercise } from '@/app/workout/actions' // Added delete import
 
 type Exercise = {
   id: string
@@ -17,7 +17,6 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // Filter to only show strength exercises matching the search
   const filteredExercises = initialExercises.filter(e => 
     e.category === 'strength' && e.name.toLowerCase().includes(search.toLowerCase())
   )
@@ -31,7 +30,6 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
 
   const handleUpdateSettings = (formData: FormData) => {
     if (!editingExercise) return
-    
     startTransition(async () => {
       await updateExerciseSettings(editingExercise.id, {
         sets: parseInt(formData.get('sets') as string) || 5,
@@ -43,10 +41,17 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
     })
   }
 
+  // NEW: Delete handler
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this exercise? This will remove it from all past workouts.')) {
+      startTransition(() => {
+        deleteExercise(id)
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
-      
-      {/* SEARCH & ACTIONS */}
       <div className="flex gap-2">
         <input 
           type="text" 
@@ -63,7 +68,6 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
         </button>
       </div>
 
-      {/* EXERCISE LIST */}
       <div className="space-y-3">
         {filteredExercises.map(ex => (
           <div 
@@ -72,27 +76,31 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
             className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:border-gray-300 transition-colors group"
           >
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-gray-900">{ex.name}</h3>
-                {ex.user_id && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">Custom</span>}
-              </div>
+              <h3 className="font-bold text-gray-900">{ex.name}</h3>
               <p className="text-sm font-medium text-gray-500 mt-1">
                 {ex.settings 
                   ? `${ex.settings.target_sets} sets • ${ex.settings.target_reps} reps • Target: ${ex.settings.current_weight}kg` 
                   : 'No targets set'}
               </p>
             </div>
-            <span className="text-gray-300 group-hover:text-gray-900 transition-colors">✏️</span>
+            
+            {/* UPDATED ACTION BUTTONS */}
+            <div className="flex items-center gap-1">
+              <span className="text-gray-300 group-hover:text-gray-900 transition-colors p-2">✏️</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDelete(ex.id) }}
+                className="text-gray-300 hover:text-red-500 font-bold p-2 transition-colors text-lg"
+              >✕</button>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* OVERLAY: CREATE CUSTOM EXERCISE */}
       {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Add Custom Exercise</h2>
+              <h2 className="text-xl font-bold text-gray-900">Add Exercise</h2>
               <button onClick={() => setIsCreateOpen(false)} className="text-gray-400 font-bold p-2">✕</button>
             </div>
             <form action={handleCreate} className="space-y-4">
@@ -109,7 +117,6 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
         </div>
       )}
 
-      {/* OVERLAY: EDIT TARGETS */}
       {editingExercise && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
