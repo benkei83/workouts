@@ -4,6 +4,14 @@ import { useState } from 'react'
 import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
 
+// NEW: Explicitly define the shape of our grouped data for the strict Vercel compiler
+type GroupedLift = {
+  name: string
+  sets: number
+  maxWeight: number
+  repsArray: number[]
+}
+
 export function InteractiveCanvas({ 
   workoutId, 
   initialRunningLogs = [],
@@ -20,7 +28,7 @@ export function InteractiveCanvas({
   // Safely flatten the sets array, defaulting to empty if null
   const completedExercises = initialStrengthLogs.flatMap(log => log.strength_sets || [])
   
-  // Group the sets by exercise name for a cleaner summary card
+  // Group the sets by exercise name using our new explicit type
   const groupedLifts = completedExercises.reduce((acc, set) => {
     const name = set.exercises?.name || 'Unknown Exercise'
     if (!acc[name]) {
@@ -32,9 +40,10 @@ export function InteractiveCanvas({
       acc[name].maxWeight = set.actual_weight
     }
     return acc
-  }, {} as Record<string, { name: string, sets: number, maxWeight: number, repsArray: number[] }>)
+  }, {} as Record<string, GroupedLift>)
 
-  const groupedLiftsArray = Object.values(groupedLifts)
+  // NEW: Explicitly cast the resulting array so TypeScript doesn't panic
+  const groupedLiftsArray = Object.values(groupedLifts) as GroupedLift[]
   
   const isCanvasEmpty = initialRunningLogs.length === 0 && completedExercises.length === 0
 
