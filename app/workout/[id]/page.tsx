@@ -14,7 +14,6 @@ export default function ActiveWorkoutPage({
 }: { 
   params: Promise<{ id: string }> 
 }) {
-  // Reduced bottom padding (pb-24 -> pb-12) since the sticky button is gone
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-12 relative">
       <Suspense fallback={
@@ -55,11 +54,29 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   const isFinished = workout.total_duration_mins !== null
 
-  const { data: allExercises } = await supabase
+// 1. Fetch the raw exercises
+  const { data: allExercisesRaw } = await supabase
     .from('exercises')
     .select('id, name')
     .eq('category', 'strength')
     .order('name')
+
+  // 2. Fetch the FULL settings object
+  const { data: userSettings } = await supabase
+    .from('user_exercise_settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+
+  // 3. Merge them together 
+  const allExercises = (allExercisesRaw || []).map(ex => {
+    const setting = (userSettings || []).find(s => s.exercise_id === ex.id)
+    return {
+      ...ex,
+      settings: setting || null, // Pass the whole settings object for the inline editor
+      increment_step: setting?.increment_step || 2.5 
+    }
+  })
 
   const dateObj = new Date(workout.created_at)
   const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -80,7 +97,6 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
         
-        {/* THE NEW HEADER ACTIONS GROUP */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {!isFinished && (
             <form action={finishWorkout}>
@@ -102,7 +118,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           workoutId={workout.id} 
           initialRunningLogs={workout.running_logs || []} 
           initialStrengthLogs={workout.strength_logs || []}
-          exercises={allExercises || []}
+          exercises={allExercises}
         />
       </div>
     </>

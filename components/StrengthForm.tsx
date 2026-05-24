@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { saveStrengthExercise, deleteStrengthLog, createCustomExercise } from '@/app/workout/actions'
+import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 
 type SetData = { weight: number, reps: number }
-type Exercise = { id: string, name: string }
+type Exercise = { id: string, name: string, increment_step?: number, settings?: any }
 
 export default function StrengthForm({ 
   workoutId, 
@@ -25,9 +25,7 @@ export default function StrengthForm({
 }) {
   const [selectedExercise, setSelectedExercise] = useState(editData?.exerciseId || exercises[0]?.id || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  // NEW: State for the inline creator
-  const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
 
   const [sets, setSets] = useState<SetData[]>(() => {
     if (editData?.rawSets) return editData.rawSets
@@ -37,7 +35,9 @@ export default function StrengthForm({
     }))
   })
 
-  // --- INLINE CREATION LOGIC ---
+  const activeExerciseData = exercises.find(ex => ex.id === selectedExercise)
+  const currentIncrement = activeExerciseData?.increment_step || 2.5
+
   const handleInlineCreate = async () => {
     const input = document.getElementById('new-exercise-input') as HTMLInputElement
     const name = input?.value.trim()
@@ -51,19 +51,34 @@ export default function StrengthForm({
     const res = await createCustomExercise(formData)
     
     if (res?.success && res.id) {
-      setSelectedExercise(res.id) // Instantly auto-select the new creation
-      setIsCreatingNew(false)
-    } else {
-      alert("Failed to create exercise.")
+      setSelectedExercise(res.id)
+      setUiMode('select')
     }
     setIsSubmitting(false)
   }
 
-  // --- STANDARD HANDLERS ---
+  const handleInlineSettingsSave = async (formData: FormData) => {
+    setIsSubmitting(true)
+    await updateExerciseSettings(selectedExercise, {
+      sets: parseInt(formData.get('sets') as string) || 5,
+      reps: parseInt(formData.get('reps') as string) || 5,
+      weight: parseFloat(formData.get('weight') as string) || 0,
+      increment: parseFloat(formData.get('increment') as string) || 2.5,
+      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5
+    })
+    setIsSubmitting(false)
+    setUiMode('select')
+  }
+
   const updateSet = (index: number, field: 'weight' | 'reps', delta: number) => {
-    const newSets = [...sets]
-    newSets[index][field] = Math.max(0, newSets[index][field] + delta)
-    setSets(newSets)
+    setSets(prev => {
+      const newSets = [...prev]
+      newSets[index] = { 
+        ...newSets[index], 
+        [field]: Math.max(0, newSets[index][field] + delta) 
+      }
+      return newSets
+    })
   }
 
   const addSet = () => {
@@ -79,14 +94,15 @@ export default function StrengthForm({
     setIsSubmitting(true)
     if (editData) await deleteStrengthLog(editData.logId, workoutId)
     
-    const result = await saveStrengthExercise(workoutId, selectedExercise, sets)
+    // Pass historical timestamps and superset mappings back to the database
+    const result = await saveStrengthExercise(workoutId, selectedExercise, sets, {
+      createdAt: editData?.createdAt,
+      supersetId: editData?.supersetId
+    })
+    
     setIsSubmitting(false)
-
-    if (result?.error) {
-      alert(`Database Error: ${result.error}`)
-    } else {
-      onCancel() 
-    }
+    if (result?.error) alert(`Database Error: ${result.error}`)
+    else onCancel() 
   }
 
   return (
@@ -99,13 +115,13 @@ export default function StrengthForm({
       <div className="mb-6">
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Exercise</label>
         
-        {/* NEW: Dynamic Select / Input Toggle */}
-        {!isCreatingNew ? (
+        {uiMode === 'select' && (
           <div className="flex gap-2">
             <select 
               value={selectedExercise}
               onChange={(e) => setSelectedExercise(e.target.value)}
-              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
+              // FIXED: min-w-0 added to prevent pushing icons off screen
+              className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
             >
               {exercises.map(ex => (
                 <option key={ex.id} value={ex.id}>{ex.name}</option>
@@ -113,37 +129,57 @@ export default function StrengthForm({
             </select>
             <button 
               type="button" 
-              onClick={() => setIsCreatingNew(true)} 
+              onClick={() => setUiMode('edit_settings')} 
+              className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors shadow-sm"
+            >⚙️</button>
+            <button 
+              type="button" 
+              onClick={() => setUiMode('create')} 
               className="bg-gray-100 text-gray-600 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors shadow-sm"
-              title="Add new exercise"
-            >
-              +
-            </button>
+            >+</button>
           </div>
-        ) : (
+        )}
+
+        {uiMode === 'create' && (
           <div className="flex gap-2">
             <input 
-              id="new-exercise-input"
-              type="text" 
-              placeholder="e.g., T-Bar Row" 
-              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black"
-              autoFocus
+              id="new-exercise-input" type="text" placeholder="e.g., T-Bar Row" 
+              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black" autoFocus
             />
-            <button 
-              type="button" 
-              onClick={handleInlineCreate} 
-              disabled={isSubmitting} 
-              className="bg-black text-white font-bold px-4 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50"
-            >
-              {isSubmitting ? '...' : 'Save'}
-            </button>
-            <button 
-              type="button" 
-              onClick={() => setIsCreatingNew(false)} 
-              className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors"
-            >
-              ✕
-            </button>
+            <button type="button" onClick={handleInlineCreate} disabled={isSubmitting} className="bg-black text-white font-bold px-4 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50">Save</button>
+            <button type="button" onClick={() => setUiMode('select')} className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors">✕</button>
+          </div>
+        )}
+
+        {uiMode === 'edit_settings' && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mt-2">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-sm text-gray-900">Edit Settings: {activeExerciseData?.name}</h4>
+              <button type="button" onClick={() => setUiMode('select')} className="text-gray-400 font-bold text-sm">Cancel</button>
+            </div>
+            <form action={handleInlineSettingsSave} className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Sets</label>
+                <input type="number" name="sets" defaultValue={activeExerciseData?.settings?.target_sets || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Reps</label>
+                <input type="number" name="reps" defaultValue={activeExerciseData?.settings?.target_reps || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Target Weight</label>
+                <input type="number" step="0.5" name="weight" defaultValue={activeExerciseData?.settings?.current_weight || 60} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase text-blue-500">UI Increment (+/-)</label>
+                <input type="number" step="0.5" name="increment" defaultValue={activeExerciseData?.settings?.increment_step || 2.5} className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Rate</label>
+                <input type="number" step="0.5" name="progression_rate" defaultValue={activeExerciseData?.settings?.progression_rate || 2.5} className="w-full bg-white border border-green-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <button type="submit" disabled={isSubmitting} className="col-span-2 bg-black text-white font-bold rounded-lg py-3 mt-2">{isSubmitting ? 'Saving...' : 'Save Settings'}</button>
+            </form>
           </div>
         )}
       </div>
@@ -151,20 +187,18 @@ export default function StrengthForm({
       <div className="space-y-3 mb-6">
         {sets.map((set, index) => (
           <div key={index} className="flex items-center justify-between gap-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative group">
-            
             {sets.length > 1 && (
               <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>
             )}
-            
             <div className="font-bold text-gray-400 w-4 text-center text-sm">{index + 1}</div>
             
             <div className="flex items-center bg-white rounded-lg border border-gray-200">
-              <button type="button" onClick={() => updateSet(index, 'weight', -2.5)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+              <button type="button" onClick={() => updateSet(index, 'weight', -currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
               <div className="text-center w-12 leading-tight">
-                <div className="font-bold text-gray-900">{set.weight}</div>
+                <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
                 <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
               </div>
-              <button type="button" onClick={() => updateSet(index, 'weight', 2.5)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+              <button type="button" onClick={() => updateSet(index, 'weight', currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
             </div>
 
             <div className="text-gray-300 font-bold text-sm px-1">×</div>
@@ -185,7 +219,7 @@ export default function StrengthForm({
         + Add Set
       </button>
 
-      <button type="button" onClick={handleSave} disabled={isSubmitting || isCreatingNew} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
+      <button type="button" onClick={handleSave} disabled={isSubmitting || uiMode !== 'select'} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
         {isSubmitting ? 'Saving...' : (editData ? 'Update Exercise' : 'Save Exercise')}
       </button>
     </div>

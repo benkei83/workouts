@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { saveSupersetLog } from '@/app/workout/actions'
 
-type Exercise = { id: string, name: string }
+type Exercise = { id: string, name: string, increment_step?: number }
 type SetMatrix = { [exerciseId: string]: { weight: number, reps: number }[] }
 
 export default function SupersetForm({ 
@@ -39,14 +39,12 @@ export default function SupersetForm({
   }
 
   const generateMatrix = () => {
-    // Ensure valid exercises are selected
     const validIds = selectedExerciseIds.filter(id => id !== '')
     if (validIds.length < 2) {
       alert("Please select at least two exercises for a superset.")
       return
     }
 
-    // Build the empty tracking matrix
     const newMatrix: SetMatrix = {}
     validIds.forEach(id => {
       newMatrix[id] = Array.from({ length: targetSets }, () => ({ weight: 0, reps: 0 }))
@@ -56,19 +54,24 @@ export default function SupersetForm({
     setMode('logging')
   }
 
+// FIX: Deep-copy the matrix to defeat React 18 Strict Mode
   const updateMatrixValue = (exerciseId: string, setIndex: number, field: 'weight' | 'reps', delta: number) => {
     setMatrix(prev => {
       const updated = { ...prev }
-      updated[exerciseId][setIndex][field] = Math.max(0, updated[exerciseId][setIndex][field] + delta)
+      updated[exerciseId] = [...prev[exerciseId]]
+      
+      updated[exerciseId][setIndex] = {
+        ...prev[exerciseId][setIndex],
+        [field]: Math.max(0, prev[exerciseId][setIndex][field] + delta)
+      }
+      
       return updated
     })
   }
 
   const handleSave = async () => {
     setIsSubmitting(true)
-    
     const result = await saveSupersetLog(workoutId, matrix)
-    
     setIsSubmitting(false)
 
     if (result?.error) {
@@ -134,7 +137,9 @@ export default function SupersetForm({
               <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">Set {setIndex + 1}</h4>
               
               {selectedExerciseIds.filter(id => id !== '').map((exId, exIndex) => {
-                const exerciseName = exercises.find(e => e.id === exId)?.name || 'Exercise'
+                const exerciseDetails = exercises.find(e => e.id === exId)
+                const exerciseName = exerciseDetails?.name || 'Exercise'
+                const rowIncrement = exerciseDetails?.increment_step || 2.5
                 const rowData = matrix[exId][setIndex]
 
                 return (
@@ -145,12 +150,12 @@ export default function SupersetForm({
                     </div>
                     
                     <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', -2.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
+                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', -rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
                       <div className="flex-1 text-center leading-tight">
-                        <div className="font-bold text-white text-sm">{rowData.weight}</div>
+                        <div className="font-bold text-white text-sm">{Number(rowData.weight.toFixed(2))}</div>
                         <div className="text-[9px] text-gray-500 font-semibold uppercase">kg</div>
                       </div>
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', 2.5)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
+                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
                     </div>
 
                     <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
