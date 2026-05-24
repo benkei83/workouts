@@ -20,6 +20,22 @@ export function InteractiveCanvas({
   // Safely flatten the sets array, defaulting to empty if null
   const completedExercises = initialStrengthLogs.flatMap(log => log.strength_sets || [])
   
+  // Group the sets by exercise name for a cleaner summary card
+  const groupedLifts = completedExercises.reduce((acc, set) => {
+    const name = set.exercises?.name || 'Unknown Exercise'
+    if (!acc[name]) {
+      acc[name] = { name, sets: 0, maxWeight: 0, repsArray: [] }
+    }
+    acc[name].sets += 1
+    acc[name].repsArray.push(set.actual_reps)
+    if (set.actual_weight > acc[name].maxWeight) {
+      acc[name].maxWeight = set.actual_weight
+    }
+    return acc
+  }, {} as Record<string, { name: string, sets: number, maxWeight: number, repsArray: number[] }>)
+
+  const groupedLiftsArray = Object.values(groupedLifts)
+  
   const isCanvasEmpty = initialRunningLogs.length === 0 && completedExercises.length === 0
 
   return (
@@ -50,17 +66,19 @@ export function InteractiveCanvas({
       )}
 
       {/* 2. RENDER COMPLETED LIFTS */}
-      {completedExercises.length > 0 && (
+      {groupedLiftsArray.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mt-6">Completed Lifts</h3>
-          {completedExercises.map((set) => (
-             <div key={set.id} className="bg-white px-4 py-3 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-               <p className="font-bold text-gray-900 text-sm">
-                 <span className="text-gray-400 w-4 inline-block mr-2">{set.set_number}</span> 
-                 {set.exercises?.name}
-               </p>
-               <p className="font-bold text-gray-600">
-                 {set.actual_weight} <span className="text-xs font-normal text-gray-400">kg</span> × {set.actual_reps}
+          {groupedLiftsArray.map((lift, index) => (
+             <div key={index} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1">
+               <div className="flex justify-between items-center">
+                 <p className="font-bold text-gray-900 text-[15px]">{lift.name}</p>
+                 <p className="font-bold text-gray-900">
+                   {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
+                 </p>
+               </div>
+               <p className="text-sm text-gray-500 font-medium">
+                 {lift.sets} sets • {lift.repsArray.join('-')} reps
                </p>
              </div>
           ))}
