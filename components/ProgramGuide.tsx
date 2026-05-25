@@ -81,11 +81,15 @@ export default function ProgramGuide({
   const firstIsSuperset = !!firstPE?.superset_template_id
 
   const [step, setStep] = useState(0)
-  const [setsMap, setSetsMap] = useState<Record<number, SetData[]>>(() =>
-    firstIsSuperset ? {} : { 0: buildSets(firstPE?.exercise_id) }
+  const [setsMap, setSetsMap] = useState<Record<number, SetData[]>>(
+    firstIsSuperset
+      ? ({} as Record<number, SetData[]>)
+      : { 0: buildSets(firstPE?.exercise_id) }
   )
-  const [supersetMap, setSupersetMap] = useState<Record<number, SupersetMatrix>>(() =>
-    firstIsSuperset ? { 0: buildSupersetMatrix(firstPE) } : {}
+  const [supersetMap, setSupersetMap] = useState<Record<number, SupersetMatrix>>(
+    firstIsSuperset
+      ? { 0: buildSupersetMatrix(firstPE) }
+      : ({} as Record<number, SupersetMatrix>)
   )
   const [logged, setLogged] = useState<Set<number>>(new Set())
   const [skipped, setSkipped] = useState<Set<number>>(new Set())
