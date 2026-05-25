@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog } from '@/app/workout/actions'
+import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
 import { getDeloadStatus, getSuccessStatus } from '@/lib/deload'
@@ -85,6 +85,11 @@ export default function SupersetForm({
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+
+  // ── TEMPLATE MANAGE STATE ─────────────────────────────────
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [isDeletingId, setIsDeletingId] = useState<string | null>(null)
 
   // ── SETUP HANDLERS ────────────────────────────────────────
   const updateSelectedExercise = (index: number, value: string) => {
@@ -183,6 +188,21 @@ export default function SupersetForm({
     }
   }
 
+  const handleRenameTemplate = async (id: string) => {
+    if (!renameValue.trim()) return
+    const result = await renameSupersetTemplate(id, renameValue.trim())
+    if (result && 'error' in result) alert(`Error: ${result.error}`)
+    else setRenamingId(null)
+  }
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!window.confirm('Delete this template?')) return
+    setIsDeletingId(id)
+    const result = await deleteSupersetTemplate(id)
+    setIsDeletingId(null)
+    if (result && 'error' in result) alert(`Error: ${result.error}`)
+  }
+
   // ── RENDER ────────────────────────────────────────────────
   // Which exercises are active (for the matrix columns)
   const activeIds = isEditing
@@ -217,17 +237,33 @@ export default function SupersetForm({
         <div className="space-y-6">
           {supersetTemplates.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Load Template</label>
-              <select
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 font-bold text-gray-900 text-sm outline-none"
-                defaultValue=""
-                onChange={e => { if (e.target.value) loadFromTemplate(e.target.value) }}
-              >
-                <option value="" disabled>Select a saved template...</option>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Saved Templates</label>
+              <div className="space-y-2">
                 {supersetTemplates.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
+                  <div key={t.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                    {renamingId === t.id ? (
+                      <>
+                        <input
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleRenameTemplate(t.id); if (e.key === 'Escape') setRenamingId(null) }}
+                          className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-bold outline-none focus:ring-2 focus:ring-black"
+                          autoFocus
+                        />
+                        <button type="button" onClick={() => handleRenameTemplate(t.id)} className="text-xs font-bold text-white bg-black px-2 py-1 rounded-lg">Save</button>
+                        <button type="button" onClick={() => setRenamingId(null)} className="text-gray-400 font-bold text-sm px-1">✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm font-bold text-gray-900 truncate">{t.name}</span>
+                        <button type="button" onClick={() => loadFromTemplate(t.id)} className="text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors flex-shrink-0">Load</button>
+                        <button type="button" onClick={() => { setRenamingId(t.id); setRenameValue(t.name) }} className="text-gray-300 hover:text-gray-600 font-bold text-xs transition-colors">✏️</button>
+                        <button type="button" onClick={() => handleDeleteTemplate(t.id)} disabled={isDeletingId === t.id} className="text-gray-300 hover:text-red-500 font-bold text-sm transition-colors disabled:opacity-40">✕</button>
+                      </>
+                    )}
+                  </div>
                 ))}
-              </select>
+              </div>
             </div>
           )}
 

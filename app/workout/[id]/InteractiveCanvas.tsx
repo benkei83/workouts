@@ -350,6 +350,24 @@ export function InteractiveCanvas({
             }
 
             // ── Superset group ──
+            const isEditingThisSuperset =
+              activeModule === 'superset' &&
+              editSupersetData !== null &&
+              editSupersetData[0]?.supersetId === item.supersetId
+
+            if (isEditingThisSuperset) {
+              return (
+                <SupersetForm
+                  key={item.supersetId}
+                  workoutId={workoutId}
+                  exercises={exercises}
+                  supersetTemplates={supersetTemplates}
+                  editData={editSupersetData!}
+                  onCancel={closeForm}
+                />
+              )
+            }
+
             return (
               <div key={item.supersetId} className="border-2 border-blue-200 rounded-2xl overflow-hidden">
                 {/* Group header */}
@@ -509,14 +527,13 @@ export function InteractiveCanvas({
         <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} onSave={handleSaveStrength} />
       )}
 
-      {activeModule === 'superset' && (
+      {activeModule === 'superset' && !editSupersetData && (
         <SupersetForm
           workoutId={workoutId}
           exercises={exercises}
           supersetTemplates={supersetTemplates}
-          editData={editSupersetData ?? undefined}
           onCancel={closeForm}
-          onSave={editSupersetData ? undefined : handleSaveSuperset}
+          onSave={handleSaveSuperset}
         />
       )}
 

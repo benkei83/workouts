@@ -632,6 +632,22 @@ export async function saveSupersetTemplate(name: string, exerciseIds: string[]) 
   return { success: true, id: template.id }
 }
 
+export async function renameSupersetTemplate(id: string, name: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('superset_templates')
+    .update({ name })
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: 'Failed to rename template' }
+  revalidatePath('/', 'layout')
+  return { success: true }
+}
+
 export async function deleteSupersetTemplate(id: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
