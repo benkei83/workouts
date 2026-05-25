@@ -131,24 +131,34 @@ export async function saveStrengthExercise(
     const completedSetsCount = sets.length
     const allSetsHitTarget = sets.every(s => Number(s.reps) >= targetReps)
 
+    // Base all weight calculations on what was actually lifted, not the stored target.
+    // Using the minimum across sets is the conservative choice when someone lifts lighter.
+    const actualWeight = sets.length > 0
+      ? Math.min(...sets.map(s => Number(s.weight)))
+      : newWeight
+
     if (setting.protocol === 'linear') {
       // 5x5 STYLE
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
         newSuccesses += 1
         newFailures = 0
         if (newSuccesses >= minSuccesses) {
-          newWeight += progRate
+          newWeight = actualWeight + progRate   // increment from what they lifted
           newSuccesses = 0
+        } else {
+          newWeight = actualWeight              // track actual weight for next session's pre-fill
         }
         changed = true
       } else {
         newSuccesses = 0
         newFailures += 1
-        changed = true
         if (newFailures >= maxFails) {
-          newWeight = Math.max(0, newWeight - (progRate * deloadMult))
+          newWeight = Math.max(0, actualWeight - (progRate * deloadMult))  // deload from actual
           newFailures = 0
+        } else {
+          newWeight = actualWeight
         }
+        changed = true
       }
     } else if (setting.protocol === 'double') {
       // 3x12 STYLE (Lower bound is Target - 4)
@@ -159,25 +169,30 @@ export async function saveStrengthExercise(
         newSuccesses += 1
         newFailures = 0
         if (newSuccesses >= minSuccesses) {
-          newWeight += progRate
+          newWeight = actualWeight + progRate
           newSuccesses = 0
+        } else {
+          newWeight = actualWeight
         }
         changed = true
       } else if (completedSetsCount >= targetSets && allSetsHitMaintain) {
-        // Maintenance: forgive failure streak, reset success streak (not a full success)
-        if (newFailures !== 0 || newSuccesses !== 0) {
+        // Maintenance: forgive streaks, track actual weight
+        if (newFailures !== 0 || newSuccesses !== 0 || actualWeight !== newWeight) {
           newFailures = 0
           newSuccesses = 0
+          newWeight = actualWeight
           changed = true
         }
       } else {
         newSuccesses = 0
         newFailures += 1
-        changed = true
         if (newFailures >= maxFails) {
-          newWeight = Math.max(0, newWeight - (progRate * deloadMult))
+          newWeight = Math.max(0, actualWeight - (progRate * deloadMult))
           newFailures = 0
+        } else {
+          newWeight = actualWeight
         }
+        changed = true
       }
     }
 

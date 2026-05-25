@@ -92,16 +92,22 @@ async function Dashboard() {
 
   return (
     <>
-<header className="bg-white px-6 py-5 border-b border-gray-200 flex justify-between items-center sticky top-0 z-10 shadow-sm">
-        <div>
+<header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+        {/* Top row: title + signed-in email */}
+        <div className="flex justify-between items-center">
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
-          <p className="text-gray-500 text-xs mt-0.5">
-            {user ? `Logged in as ${user.email}` : 'Not logged in'}
-          </p>
+          {user ? (
+            <p className="text-gray-400 text-xs ml-3 truncate max-w-[180px] text-right">{user.email}</p>
+          ) : (
+            <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
+              Sign In
+            </Link>
+          )}
         </div>
-        
-        {user ? (
-          <div className="flex items-center gap-4">
+
+        {/* Bottom row: nav + sign out */}
+        {user && (
+          <div className="flex items-center gap-4 mt-2 flex-wrap">
             <Link href="/exercises" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
               Exercises
             </Link>
@@ -117,10 +123,6 @@ async function Dashboard() {
               </button>
             </form>
           </div>
-        ) : (
-          <Link href="/sign-in" className="bg-black text-white text-sm font-bold py-2 px-4 rounded-full hover:bg-gray-800 transition-colors">
-            Sign In
-          </Link>
         )}
       </header>
       
