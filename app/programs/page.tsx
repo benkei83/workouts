@@ -47,7 +47,8 @@ async function ProgramDataLoader() {
         *,
         program_exercises (
           *,
-          exercises ( id, name )
+          exercises ( id, name ),
+          superset_templates ( id, name, superset_template_exercises ( sort_order, exercise_id, exercises(id, name) ) )
         )
       )
     `)
@@ -57,12 +58,19 @@ async function ProgramDataLoader() {
     .from('user_active_programs')
     .select('*')
     .eq('user_id', user.id)
-    .single()
+    .maybeSingle()
+
+  const { data: supersetTemplates } = await supabase
+    .from('superset_templates')
+    .select('id, name')
+    .eq('user_id', user.id)
+    .order('name')
 
   return (
     <ProgramManager
       initialPrograms={programs || []}
       exercises={exercises || []}
+      supersetTemplates={supersetTemplates || []}
       userId={user.id}
       activeProgram={activeProgram || null}
     />

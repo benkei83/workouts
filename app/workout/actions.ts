@@ -195,54 +195,16 @@ export async function saveStrengthExercise(
 }
 
 export async function saveSupersetLog(
-  workoutId: string, 
+  workoutId: string,
   matrix: { [exerciseId: string]: { weight: number, reps: number }[] }
 ) {
-  const supabase = await createClient()
-  
+  // Generate one shared supersetId so all exercises are visually grouped
   const supersetId = crypto.randomUUID()
-  const exerciseIds = Object.keys(matrix)
 
-  const logsToInsert = exerciseIds.map(() => ({
-    workout_id: workoutId,
-    superset_id: supersetId
-  }))
-
-  const { data: insertedLogs, error: logsError } = await supabase
-    .from('strength_logs')
-    .insert(logsToInsert)
-    .select('id')
-
-  if (logsError || !insertedLogs || insertedLogs.length !== exerciseIds.length) {
-    console.error("Failed to create superset logs:", logsError)
-    return { error: 'Failed to initialize superset' }
-  }
-
-  const setsToInsert: any[] = []
-  
-  exerciseIds.forEach((exId, index) => {
-    const logId = insertedLogs[index].id
-    const sets = matrix[exId]
-
-    sets.forEach((set, setIndex) => {
-      setsToInsert.push({
-        strength_log_id: logId,
-        exercise_id: exId,
-        set_number: setIndex + 1,
-        actual_weight: set.weight,
-        actual_reps: set.reps
-      })
-    })
-  })
-
-  const { error: setsError } = await supabase
-    .from('strength_sets')
-    .insert(setsToInsert)
-
-  if (setsError) {
-    console.error("Supabase sets error:", setsError)
-    await supabase.from('strength_logs').delete().eq('superset_id', supersetId)
-    return { error: setsError.message }
+  // Call saveStrengthExercise for each exercise — this runs the progression engine per exercise
+  for (const exId of Object.keys(matrix)) {
+    const result = await saveStrengthExercise(workoutId, exId, matrix[exId], { supersetId })
+    if (result?.error) return result
   }
 
   revalidatePath(`/workout/${workoutId}`)
@@ -407,7 +369,8 @@ export async function fetchProgramById(id: string) {
         *,
         program_exercises (
           *,
-          exercises ( id, name )
+          exercises ( id, name ),
+          superset_templates ( id, name, superset_template_exercises ( sort_order, exercise_id, exercises(id, name) ) )
         )
       )
     `)
@@ -430,7 +393,8 @@ export async function fetchPrograms() {
         *,
         program_exercises (
           *,
-          exercises ( id, name )
+          exercises ( id, name ),
+          superset_templates ( id, name, superset_template_exercises ( sort_order, exercise_id, exercises(id, name) ) )
         )
       )
     `)
@@ -572,4 +536,98 @@ export async function fetchUserActiveProgram() {
     .single()
 
   return data || null
+}
+
+// ============================================================
+// SUPERSET TEMPLATE ACTIONS
+// ============================================================
+
+export async function fetchSupersetTemplates() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('superset_templates')
+    .select(`
+      id, name,
+      superset_template_exercises ( sort_order, exercise_id, exercises(id, name) )
+    `)
+    .eq('user_id', user.id)
+    .order('name')
+
+  return data || []
+}
+
+export async function saveSupersetTemplate(name: string, exerciseIds: string[]) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { data: template, error } = await supabase
+    .from('superset_templates')
+    .insert({ name, user_id: user.id })
+    .select('id')
+    .single()
+
+  if (error || !template) return { error: error?.message || 'Failed to save template' }
+
+  const exercises = exerciseIds.map((exId, i) => ({
+    superset_id: template.id,
+    exercise_id: exId,
+    sort_order: i + 1,
+  }))
+
+  const { error: exError } = await supabase.from('superset_template_exercises').insert(exercises)
+  if (exError) {
+    await supabase.from('superset_templates').delete().eq('id', template.id)
+    return { error: exError.message }
+  }
+
+  return { success: true, id: template.id }
+}
+
+export async function deleteSupersetTemplate(id: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('superset_templates')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: 'Failed to delete template' }
+  return { success: true }
+}
+
+export async function deleteSupersetGroup(supersetId: string, workoutId: string) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('strength_logs')
+    .delete()
+    .eq('superset_id', supersetId)
+
+  if (error) return { error: 'Failed to delete superset group' }
+
+  revalidatePath(`/workout/${workoutId}`)
+  return { success: true }
+}
+
+export async function addSupersetToProgram(programWorkoutId: string, supersetTemplateId: string, sortOrder: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase.from('program_exercises').insert({
+    program_workout_id: programWorkoutId,
+    superset_template_id: supersetTemplateId,
+    sort_order: sortOrder,
+  })
+
+  if (error) return { error: error.message || 'Failed to add superset to program' }
+  revalidatePath('/programs')
+  return { success: true }
 }

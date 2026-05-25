@@ -108,6 +108,9 @@ async function Dashboard() {
             <Link href="/programs" className="text-sm font-bold text-gray-900 hover:text-purple-600 transition-colors">
               Programs
             </Link>
+            <Link href="/stats" className="text-sm font-bold text-gray-900 hover:text-green-600 transition-colors">
+              Stats
+            </Link>
             <form action={signOut}>
               <button className="text-sm font-bold text-gray-500 hover:text-black transition-colors">
                 Sign Out

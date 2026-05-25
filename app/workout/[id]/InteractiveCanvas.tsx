@@ -5,7 +5,7 @@ import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
 import SupersetForm from '@/components/SupersetForm'
 import ProgramGuide from '@/components/ProgramGuide'
-import { deleteRunningLog, deleteStrengthLog, createProgram } from '../actions'
+import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram } from '../actions'
 import Link from 'next/link'
 
 type StrengthCard = {
@@ -20,10 +20,24 @@ type StrengthCard = {
   createdAt?: string
 }
 
+type RenderItem =
+  | { type: 'solo'; card: StrengthCard }
+  | { type: 'superset'; supersetId: string; cards: StrengthCard[] }
+
 type ProgramExercise = { id: string; exercise_id: string; sort_order: number; exercises: { id: string; name: string } }
 type ProgramWorkout = { id: string; name: string; rotation_order: number; program_exercises: ProgramExercise[] }
 type Program = { id: string; name: string; description: string | null; program_workouts: ProgramWorkout[] }
 type ActiveProgram = { program_id: string; current_rotation_index: number } | null
+
+type SupersetTemplate = {
+  id: string
+  name: string
+  superset_template_exercises: {
+    sort_order: number
+    exercise_id: string
+    exercises: { id: string; name: string }
+  }[]
+}
 
 export function InteractiveCanvas({
   workoutId,
@@ -32,6 +46,7 @@ export function InteractiveCanvas({
   exercises = [],
   programs = [],
   activeProgram = null,
+  supersetTemplates = [],
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -39,6 +54,7 @@ export function InteractiveCanvas({
   exercises: any[]
   programs: Program[]
   activeProgram: ActiveProgram
+  supersetTemplates: SupersetTemplate[]
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
@@ -66,6 +82,31 @@ export function InteractiveCanvas({
       }
     })
 
+  // Build render items — group by supersetId
+  const renderItems: RenderItem[] = []
+  const supersetGroupMap = new Map<string, StrengthCard[]>()
+  const seenSupersetIds = new Set<string>()
+
+  for (const card of strengthCards) {
+    if (card.supersetId) {
+      const group = supersetGroupMap.get(card.supersetId) || []
+      group.push(card)
+      supersetGroupMap.set(card.supersetId, group)
+    }
+  }
+  for (const card of strengthCards) {
+    if (!card.supersetId) {
+      renderItems.push({ type: 'solo', card })
+    } else if (!seenSupersetIds.has(card.supersetId)) {
+      seenSupersetIds.add(card.supersetId)
+      renderItems.push({
+        type: 'superset',
+        supersetId: card.supersetId,
+        cards: supersetGroupMap.get(card.supersetId)!,
+      })
+    }
+  }
+
   const isCanvasEmpty = initialRunningLogs.length === 0 && strengthCards.length === 0
 
   const handleDeleteCardio = (logId: string) => {
@@ -77,6 +118,12 @@ export function InteractiveCanvas({
   const handleDeleteStrength = (logId: string) => {
     if (window.confirm('Delete this exercise?')) {
       startTransition(() => { deleteStrengthLog(logId, workoutId) })
+    }
+  }
+
+  const handleDeleteSupersetGroup = (supersetId: string) => {
+    if (window.confirm('Delete this entire superset?')) {
+      startTransition(() => { deleteSupersetGroup(supersetId, workoutId) })
     }
   }
 
@@ -102,7 +149,6 @@ export function InteractiveCanvas({
     startTransition(async () => {
       const res = await createProgram(formData)
       if (res?.success) {
-        // Reload to get fresh program list with IDs
         window.location.reload()
       }
       setIsCreatingProgram(false)
@@ -147,45 +193,80 @@ export function InteractiveCanvas({
       )}
 
       {/* 2. COMPLETED LIFTS */}
-      {strengthCards.length > 0 && (
+      {renderItems.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mt-6">Completed Lifts</h3>
-          {strengthCards.map((lift) => {
-            if (activeModule === 'strength' && editData?.logId === lift.logId) {
+
+          {renderItems.map((item, idx) => {
+            // ── Single exercise ──
+            if (item.type === 'solo') {
+              const lift = item.card
+              if (activeModule === 'strength' && editData?.logId === lift.logId) {
+                return (
+                  <StrengthForm
+                    key={lift.logId}
+                    workoutId={workoutId}
+                    exercises={exercises}
+                    onCancel={closeForm}
+                    editData={editData}
+                  />
+                )
+              }
               return (
-                <StrengthForm
-                  key={lift.logId}
-                  workoutId={workoutId}
-                  exercises={exercises}
-                  onCancel={closeForm}
-                  editData={editData}
-                />
+                <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
+                  <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+                    <button
+                      onClick={() => { setEditData(lift); setActiveModule('strength') }}
+                      className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
+                    >✏️</button>
+                    <button
+                      onClick={() => handleDeleteStrength(lift.logId)}
+                      className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
+                    >✕</button>
+                  </div>
+                  <div className="flex justify-between items-center pr-4">
+                    <p className="font-bold text-gray-900 text-[15px]">{lift.name}</p>
+                    <p className="font-bold text-gray-900">
+                      {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-500 font-medium">
+                    {lift.setsCount} sets • {lift.repsArray.join('-')} reps
+                  </p>
+                </div>
               )
             }
+
+            // ── Superset group ──
             return (
-              <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
-                <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+              <div key={item.supersetId} className="border-2 border-blue-200 rounded-2xl overflow-hidden">
+                {/* Group header */}
+                <div className="bg-blue-50 px-4 py-2 flex justify-between items-center border-b border-blue-100">
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">🔄 Superset</span>
                   <button
-                    onClick={() => { setEditData(lift); setActiveModule('strength') }}
-                    className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
-                  >✏️</button>
-                  <button
-                    onClick={() => handleDeleteStrength(lift.logId)}
-                    className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
+                    onClick={() => handleDeleteSupersetGroup(item.supersetId)}
+                    className="text-gray-300 hover:text-red-500 font-bold text-sm transition-colors leading-none"
                   >✕</button>
                 </div>
-                <div className="flex justify-between items-center pr-4">
-                  <p className="font-bold text-gray-900 text-[15px]">
-                    {lift.name}
-                    {lift.supersetId && <span className="ml-2 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">Superset</span>}
-                  </p>
-                  <p className="font-bold text-gray-900">
-                    {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
-                  </p>
+                {/* Individual exercises inside the group */}
+                <div className="bg-white divide-y divide-blue-50">
+                  {item.cards.map((lift, liftIdx) => (
+                    <div key={lift.logId} className="px-4 py-3 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                          <span className="text-xs font-bold text-blue-400 w-4">{String.fromCharCode(65 + liftIdx)}</span>
+                          {lift.name}
+                        </p>
+                        <p className="text-xs text-gray-500 font-medium ml-6">
+                          {lift.setsCount} sets • {lift.repsArray.join('-')} reps
+                        </p>
+                      </div>
+                      <p className="font-bold text-gray-900 text-sm">
+                        {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
+                      </p>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-sm text-gray-500 font-medium">
-                  {lift.setsCount} sets • {lift.repsArray.join('-')} reps
-                </p>
               </div>
             )
           })}
@@ -248,7 +329,12 @@ export function InteractiveCanvas({
       )}
 
       {activeModule === 'superset' && (
-        <SupersetForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} />
+        <SupersetForm
+          workoutId={workoutId}
+          exercises={exercises}
+          supersetTemplates={supersetTemplates}
+          onCancel={closeForm}
+        />
       )}
 
       {/* 5. PROGRAM SELECTOR */}
@@ -321,7 +407,6 @@ export function InteractiveCanvas({
               </div>
             </div>
           ) : (
-            // Inline quick-create
             <form action={handleCreateProgram} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Program Name</label>

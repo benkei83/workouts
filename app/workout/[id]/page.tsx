@@ -100,6 +100,16 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     .eq('user_id', user.id)
     .maybeSingle()
 
+  // 6. Fetch superset templates (for SupersetForm load/save)
+  const { data: supersetTemplates } = await supabase
+    .from('superset_templates')
+    .select(`
+      id, name,
+      superset_template_exercises ( sort_order, exercise_id, exercises(id, name) )
+    `)
+    .eq('user_id', user.id)
+    .order('name')
+
   const dateObj = new Date(workout.created_at)
   const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   const dateString = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -143,6 +153,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           exercises={allExercises}
           programs={programs || []}
           activeProgram={activeProgram || null}
+          supersetTemplates={supersetTemplates || []}
         />
       </div>
     </>

@@ -6,12 +6,21 @@ import {
   updateProgram,
   deleteProgram,
   addProgramExercise,
+  addSupersetToProgram,
   removeProgramExercise,
   fetchProgramById,
 } from '@/app/workout/actions'
 
 type Exercise = { id: string; name: string }
-type ProgramExercise = { id: string; exercise_id: string; sort_order: number; exercises: Exercise }
+type SupersetTemplate = { id: string; name: string }
+type ProgramExercise = {
+  id: string
+  exercise_id: string | null
+  sort_order: number
+  exercises: Exercise | null
+  superset_template_id?: string | null
+  superset_templates?: SupersetTemplate | null
+}
 type ProgramWorkout = { id: string; name: string; rotation_order: number; program_exercises: ProgramExercise[] }
 type Program = {
   id: string
@@ -24,10 +33,12 @@ type ActiveProgram = { program_id: string; current_rotation_index: number } | nu
 export default function ProgramManager({
   initialPrograms,
   exercises,
+  supersetTemplates = [],
   activeProgram,
 }: {
   initialPrograms: Program[]
   exercises: Exercise[]
+  supersetTemplates?: SupersetTemplate[]
   userId: string
   activeProgram: ActiveProgram
 }) {
@@ -74,7 +85,17 @@ export default function ProgramManager({
     startTransition(async () => {
       const res = await addProgramExercise(programWorkoutId, exerciseId, currentCount + 1)
       if (res?.error) { alert(`Error: ${res.error}`); return }
-      // Refresh just the editing modal data without a full page reload
+      if (editingProgram) {
+        const fresh = await fetchProgramById(editingProgram.id)
+        if (fresh) setEditingProgram(fresh as Program)
+      }
+    })
+  }
+
+  const handleAddSuperset = (programWorkoutId: string, supersetTemplateId: string, currentCount: number) => {
+    startTransition(async () => {
+      const res = await addSupersetToProgram(programWorkoutId, supersetTemplateId, currentCount + 1)
+      if (res?.error) { alert(`Error: ${res.error}`); return }
       if (editingProgram) {
         const fresh = await fetchProgramById(editingProgram.id)
         if (fresh) setEditingProgram(fresh as Program)
@@ -95,7 +116,7 @@ export default function ProgramManager({
   const openEdit = async (program: Program) => {
     setActiveDay(0)
     setIsLoadingEdit(true)
-    setEditingProgram(program) // open modal immediately with what we have
+    setEditingProgram(program)
     const fresh = await fetchProgramById(program.id)
     if (fresh) setEditingProgram(fresh as Program)
     setIsLoadingEdit(false)
@@ -218,32 +239,31 @@ export default function ProgramManager({
               {isLoadingEdit && (
                 <p className="text-sm text-gray-400 text-center animate-pulse py-2">Loading program data...</p>
               )}
+
               {/* Name / description */}
-              {(
-                <form action={handleUpdate} className="space-y-3">
-                  <input type="hidden" name="id" value={editingProgram.id} />
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Name</label>
-                    <input
-                      type="text" name="name" required defaultValue={editingProgram.name}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-bold focus:ring-2 focus:ring-black outline-none text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Description</label>
-                    <input
-                      type="text" name="description" defaultValue={editingProgram.description || ''}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-black outline-none text-sm"
-                    />
-                  </div>
-                  <button
-                    type="submit" disabled={isPending}
-                    className="w-full bg-gray-900 text-white font-bold rounded-xl py-2.5 text-sm disabled:opacity-50 active:scale-[0.98] transition-all"
-                  >
-                    {isPending ? 'Saving...' : 'Save Details'}
-                  </button>
-                </form>
-              )}
+              <form action={handleUpdate} className="space-y-3">
+                <input type="hidden" name="id" value={editingProgram.id} />
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Name</label>
+                  <input
+                    type="text" name="name" required defaultValue={editingProgram.name}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-bold focus:ring-2 focus:ring-black outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Description</label>
+                  <input
+                    type="text" name="description" defaultValue={editingProgram.description || ''}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-black outline-none text-sm"
+                  />
+                </div>
+                <button
+                  type="submit" disabled={isPending}
+                  className="w-full bg-gray-900 text-white font-bold rounded-xl py-2.5 text-sm disabled:opacity-50 active:scale-[0.98] transition-all"
+                >
+                  {isPending ? 'Saving...' : 'Save Details'}
+                </button>
+              </form>
 
               {/* Day tabs */}
               {(editingProgram.program_workouts?.length || 0) > 1 && (
@@ -273,9 +293,10 @@ export default function ProgramManager({
                 .map((pw, i) => {
                   if (i !== activeDay) return null
                   const sortedExercises = [...(pw.program_exercises || [])].sort((a, b) => a.sort_order - b.sort_order)
+                  const availableExercises = exercises.filter(ex => !sortedExercises.some(pe => pe.exercise_id === ex.id))
 
                   return (
-                    <div key={pw.id} className="space-y-2">
+                    <div key={pw.id} className="space-y-3">
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{pw.name} — Exercises</p>
 
                       {sortedExercises.length === 0 && (
@@ -283,29 +304,37 @@ export default function ProgramManager({
                       )}
 
                       {sortedExercises.map(pe => (
-                        <div key={pe.id} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-3">
-                          <span className="font-bold text-sm text-gray-900">{pe.exercises?.name}</span>
+                        <div key={pe.id} className={`flex justify-between items-center rounded-xl px-4 py-3 ${pe.superset_template_id ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}>
+                          <div>
+                            {pe.superset_template_id ? (
+                              <>
+                                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">🔄 Superset</p>
+                                <p className="font-bold text-sm text-gray-900">{(pe as any).superset_templates?.name || 'Superset'}</p>
+                              </>
+                            ) : (
+                              <span className="font-bold text-sm text-gray-900">{pe.exercises?.name}</span>
+                            )}
+                          </div>
                           <button
-                              onClick={() => handleRemoveExercise(pe.id)}
-                              disabled={isPending}
-                              className="text-gray-300 hover:text-red-500 font-bold text-lg transition-colors"
-                            >
-                              ✕
-                            </button>
+                            onClick={() => handleRemoveExercise(pe.id)}
+                            disabled={isPending}
+                            className="text-gray-300 hover:text-red-500 font-bold text-lg transition-colors"
+                          >
+                            ✕
+                          </button>
                         </div>
                       ))}
 
-                      {(
+                      {/* Add single exercise */}
+                      {availableExercises.length > 0 && (
                         <div className="flex gap-2 pt-1">
                           <select
                             id={`add-exercise-${pw.id}`}
                             className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-black"
                           >
-                            {exercises
-                              .filter(ex => !sortedExercises.some(pe => pe.exercise_id === ex.id))
-                              .map(ex => (
-                                <option key={ex.id} value={ex.id}>{ex.name}</option>
-                              ))}
+                            {availableExercises.map(ex => (
+                              <option key={ex.id} value={ex.id}>{ex.name}</option>
+                            ))}
                           </select>
                           <button
                             disabled={isPending}
@@ -316,6 +345,30 @@ export default function ProgramManager({
                             className="bg-black text-white font-bold px-4 rounded-xl text-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
                           >
                             Add
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Add superset template */}
+                      {supersetTemplates.length > 0 && (
+                        <div className="flex gap-2">
+                          <select
+                            id={`add-superset-${pw.id}`}
+                            className="flex-1 bg-white border border-blue-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-400 text-blue-700"
+                          >
+                            {supersetTemplates.map(t => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            disabled={isPending}
+                            onClick={() => {
+                              const sel = document.getElementById(`add-superset-${pw.id}`) as HTMLSelectElement
+                              if (sel?.value) handleAddSuperset(pw.id, sel.value, sortedExercises.length)
+                            }}
+                            className="bg-blue-600 text-white font-bold px-3 rounded-xl text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            + Superset
                           </button>
                         </div>
                       )}
