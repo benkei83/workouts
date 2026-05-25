@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { InteractiveCanvas } from './InteractiveCanvas'
 import { finishWorkout } from '../actions'
 import WorkoutOptions from '@/components/WorkoutOptions'
+import WorkoutSubtitle from '@/components/WorkoutSubtitle'
 
 // ==========================================
 // THE PAGE SHELL
@@ -166,11 +167,6 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     lastSession: lastSessionMap[ex.id] ?? null,
   }))
 
-  const dateObj = new Date(workout.created_at)
-  const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-  const dateString = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  
-  const subtitle = isFinished ? `${dateString} • ${workout.total_duration_mins} mins` : `Started at ${timeString}`
 
   return (
     <>
@@ -181,7 +177,9 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           </Link>
           <div className="min-w-0 pr-2">
             <h1 className="text-lg font-extrabold text-gray-900 truncate">{workout.title}</h1>
-            <p className="text-gray-500 text-xs font-medium">{subtitle}</p>
+            <p className="text-gray-500 text-xs font-medium">
+              <WorkoutSubtitle createdAt={workout.created_at} isFinished={isFinished} durationMins={workout.total_duration_mins} />
+            </p>
           </div>
         </div>
         
