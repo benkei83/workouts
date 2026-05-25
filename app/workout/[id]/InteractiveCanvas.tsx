@@ -58,6 +58,7 @@ export function InteractiveCanvas({
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
+  const [editSupersetData, setEditSupersetData] = useState<StrengthCard[] | null>(null)
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null)
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [isPending, startTransition] = useTransition()
@@ -130,6 +131,7 @@ export function InteractiveCanvas({
   const closeForm = () => {
     setActiveModule('none')
     setEditData(null)
+    setEditSupersetData(null)
     setSelectedProgram(null)
     setIsCreatingProgram(false)
   }
@@ -243,10 +245,16 @@ export function InteractiveCanvas({
                 {/* Group header */}
                 <div className="bg-blue-50 px-4 py-2 flex justify-between items-center border-b border-blue-100">
                   <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">🔄 Superset</span>
-                  <button
-                    onClick={() => handleDeleteSupersetGroup(item.supersetId)}
-                    className="text-gray-300 hover:text-red-500 font-bold text-sm transition-colors leading-none"
-                  >✕</button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setEditSupersetData(item.cards); setActiveModule('superset') }}
+                      className="text-gray-400 hover:text-blue-500 font-bold text-xs transition-colors"
+                    >✏️</button>
+                    <button
+                      onClick={() => handleDeleteSupersetGroup(item.supersetId)}
+                      className="text-gray-300 hover:text-red-500 font-bold text-sm transition-colors leading-none"
+                    >✕</button>
+                  </div>
                 </div>
                 {/* Individual exercises inside the group */}
                 <div className="bg-white divide-y divide-blue-50">
@@ -333,6 +341,7 @@ export function InteractiveCanvas({
           workoutId={workoutId}
           exercises={exercises}
           supersetTemplates={supersetTemplates}
+          editData={editSupersetData ?? undefined}
           onCancel={closeForm}
         />
       )}

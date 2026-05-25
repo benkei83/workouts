@@ -194,6 +194,33 @@ export async function saveStrengthExercise(
   return { success: true }
 }
 
+export async function updateSupersetLog(
+  cards: { logId: string; exerciseId: string; sets: { weight: number; reps: number }[] }[],
+  workoutId: string
+) {
+  const supabase = await createClient()
+
+  for (const card of cards) {
+    // Replace all sets for this log with the new values
+    await supabase.from('strength_sets').delete().eq('strength_log_id', card.logId)
+
+    if (card.sets.length > 0) {
+      await supabase.from('strength_sets').insert(
+        card.sets.map((set, i) => ({
+          strength_log_id: card.logId,
+          exercise_id: card.exerciseId,
+          set_number: i + 1,
+          actual_weight: set.weight,
+          actual_reps: set.reps,
+        }))
+      )
+    }
+  }
+
+  revalidatePath(`/workout/${workoutId}`)
+  return { success: true }
+}
+
 export async function saveSupersetLog(
   workoutId: string,
   matrix: { [exerciseId: string]: { weight: number, reps: number }[] }

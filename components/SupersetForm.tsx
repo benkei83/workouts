@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { saveSupersetLog, saveSupersetTemplate } from '@/app/workout/actions'
+import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog } from '@/app/workout/actions'
 
 type Exercise = {
   id: string
@@ -25,45 +25,68 @@ type SupersetTemplate = {
   }[]
 }
 
+// Passed when editing an existing superset
+type EditCard = {
+  logId: string
+  exerciseId: string
+  name: string
+  rawSets: { weight: number; reps: number }[]
+}
+
 type SetMatrix = { [exerciseId: string]: { weight: number, reps: number }[] }
 
 export default function SupersetForm({
   workoutId,
   exercises,
   supersetTemplates = [],
+  editData,
   onCancel,
 }: {
   workoutId: string
   exercises: Exercise[]
   supersetTemplates?: SupersetTemplate[]
+  editData?: EditCard[]   // provided when editing an existing superset
   onCancel: () => void
 }) {
-  const [mode, setMode] = useState<'setup' | 'logging'>('setup')
+  const isEditing = !!editData && editData.length > 0
+
+  // In edit mode we jump straight to 'logging'; the exercises are locked
+  const [mode, setMode] = useState<'setup' | 'logging'>(isEditing ? 'logging' : 'setup')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // SETUP STATE
-  const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>(['', ''])
-  const [targetSets, setTargetSets] = useState(3)
+  // ── SETUP STATE (new superset only) ──────────────────────
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>(
+    isEditing ? editData!.map(c => c.exerciseId) : ['', '']
+  )
+  const [targetSets, setTargetSets] = useState(
+    isEditing ? (editData![0]?.rawSets.length || 3) : 3
+  )
 
-  // MATRIX STATE
-  const [matrix, setMatrix] = useState<SetMatrix>({})
+  // ── MATRIX STATE ─────────────────────────────────────────
+  const buildInitialMatrix = (): SetMatrix => {
+    if (isEditing) {
+      const m: SetMatrix = {}
+      editData!.forEach(card => { m[card.exerciseId] = card.rawSets.map(s => ({ ...s })) })
+      return m
+    }
+    return {}
+  }
+  const [matrix, setMatrix] = useState<SetMatrix>(buildInitialMatrix)
 
-  // TEMPLATE SAVE STATE
+  // ── TEMPLATE SAVE STATE (new only) ───────────────────────
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
+  // ── SETUP HANDLERS ────────────────────────────────────────
   const updateSelectedExercise = (index: number, value: string) => {
-    const newSelected = [...selectedExerciseIds]
-    newSelected[index] = value
-    setSelectedExerciseIds(newSelected)
+    const next = [...selectedExerciseIds]
+    next[index] = value
+    setSelectedExerciseIds(next)
   }
-
   const addExerciseSlot = () => setSelectedExerciseIds([...selectedExerciseIds, ''])
-
-  const removeExerciseSlot = (index: number) => {
+  const removeExerciseSlot = (index: number) =>
     setSelectedExerciseIds(selectedExerciseIds.filter((_, i) => i !== index))
-  }
 
   const loadFromTemplate = (templateId: string) => {
     const template = supersetTemplates.find(t => t.id === templateId)
@@ -74,54 +97,63 @@ export default function SupersetForm({
 
   const generateMatrix = () => {
     const validIds = selectedExerciseIds.filter(id => id !== '')
-    if (validIds.length < 2) {
-      alert("Please select at least two exercises for a superset.")
-      return
-    }
-
-    const newMatrix: SetMatrix = {}
+    if (validIds.length < 2) { alert('Please select at least two exercises.'); return }
+    const m: SetMatrix = {}
     validIds.forEach(id => {
       const ex = exercises.find(e => e.id === id)
-      // Pre-fill from exercise settings
-      const weight = ex?.settings?.current_weight ?? 0
-      const reps = ex?.settings?.target_reps ?? 0
-      newMatrix[id] = Array.from({ length: targetSets }, () => ({ weight, reps }))
+      m[id] = Array.from({ length: targetSets }, () => ({
+        weight: ex?.settings?.current_weight ?? 0,
+        reps: ex?.settings?.target_reps ?? 0,
+      }))
     })
-
-    setMatrix(newMatrix)
+    setMatrix(m)
     setMode('logging')
   }
 
+  // ── MATRIX HANDLERS ───────────────────────────────────────
   const updateMatrixValue = (exerciseId: string, setIndex: number, field: 'weight' | 'reps', delta: number) => {
     setMatrix(prev => {
-      const updated = { ...prev }
-      updated[exerciseId] = [...prev[exerciseId]]
+      const updated = { ...prev, [exerciseId]: [...prev[exerciseId]] }
       updated[exerciseId][setIndex] = {
-        ...prev[exerciseId][setIndex],
-        [field]: Math.max(0, prev[exerciseId][setIndex][field] + delta)
+        ...updated[exerciseId][setIndex],
+        [field]: Math.max(0, updated[exerciseId][setIndex][field] + delta),
       }
       return updated
     })
   }
 
+  // ── SAVE ──────────────────────────────────────────────────
   const handleSave = async () => {
     setIsSubmitting(true)
-    const result = await saveSupersetLog(workoutId, matrix)
-    setIsSubmitting(false)
-    if (result && 'error' in result) {
-      alert(`Error: ${result.error}`)
+
+    if (isEditing) {
+      const payload = editData!.map(card => ({
+        logId: card.logId,
+        exerciseId: card.exerciseId,
+        sets: matrix[card.exerciseId] || [],
+      }))
+      const result = await updateSupersetLog(payload, workoutId)
+      setIsSubmitting(false)
+      if (result && 'error' in result) {
+        alert(`Error: ${result.error}`)
+      } else {
+        onCancel()
+      }
     } else {
-      onCancel()
+      const result = await saveSupersetLog(workoutId, matrix)
+      setIsSubmitting(false)
+      if (result && 'error' in result) {
+        alert(`Error: ${result.error}`)
+      } else {
+        onCancel()
+      }
     }
   }
 
   const handleSaveTemplate = async () => {
     if (!templateName.trim()) return
     const validIds = selectedExerciseIds.filter(id => id !== '')
-    if (validIds.length < 2) {
-      alert("Select at least two exercises first.")
-      return
-    }
+    if (validIds.length < 2) { alert('Select at least two exercises first.'); return }
     setIsSavingTemplate(true)
     const result = await saveSupersetTemplate(templateName.trim(), validIds)
     setIsSavingTemplate(false)
@@ -133,17 +165,36 @@ export default function SupersetForm({
     }
   }
 
+  // ── RENDER ────────────────────────────────────────────────
+  // Which exercises are active (for the matrix columns)
+  const activeIds = isEditing
+    ? editData!.map(c => c.exerciseId)
+    : selectedExerciseIds.filter(id => id !== '')
+
+  const getExerciseName = (id: string) => {
+    if (isEditing) return editData!.find(c => c.exerciseId === id)?.name || 'Exercise'
+    return exercises.find(e => e.id === id)?.name || 'Exercise'
+  }
+
+  const getIncrement = (id: string) => {
+    const ex = exercises.find(e => e.id === id)
+    return ex?.increment_step || ex?.settings?.increment_step || 2.5
+  }
+
+  const numSets = matrix[activeIds[0]]?.length ?? targetSets
+
   return (
     <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-gray-900">🔄 Log Superset</h2>
+        <h2 className="text-xl font-bold text-gray-900">
+          {isEditing ? '✏️ Edit Superset' : '🔄 Log Superset'}
+        </h2>
         <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-900 font-bold p-2">✕</button>
       </div>
 
+      {/* ── SETUP MODE (new superset only) ── */}
       {mode === 'setup' && (
         <div className="space-y-6">
-
-          {/* Load from saved template */}
           {supersetTemplates.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Load Template</label>
@@ -160,7 +211,6 @@ export default function SupersetForm({
             </div>
           )}
 
-          {/* Exercise picker */}
           <div className="space-y-3">
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Circuit Exercises</label>
             {selectedExerciseIds.map((exId, index) => (
@@ -169,7 +219,7 @@ export default function SupersetForm({
                   <span className="text-xs font-bold text-gray-400 mr-3">{String.fromCharCode(65 + index)}</span>
                   <select
                     value={exId}
-                    onChange={(e) => updateSelectedExercise(index, e.target.value)}
+                    onChange={e => updateSelectedExercise(index, e.target.value)}
                     className="bg-transparent font-bold text-gray-900 outline-none w-full truncate appearance-none"
                   >
                     <option value="" disabled>Select Exercise...</option>
@@ -188,7 +238,6 @@ export default function SupersetForm({
             </button>
           </div>
 
-          {/* Sets */}
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Total Sets</label>
             <div className="flex items-center bg-gray-50 rounded-xl border border-gray-200 max-w-[150px]">
@@ -198,13 +247,8 @@ export default function SupersetForm({
             </div>
           </div>
 
-          {/* Save as template */}
           {!showSaveTemplate ? (
-            <button
-              type="button"
-              onClick={() => setShowSaveTemplate(true)}
-              className="text-sm font-semibold text-gray-400 hover:text-gray-700 transition-colors"
-            >
+            <button type="button" onClick={() => setShowSaveTemplate(true)} className="text-sm font-semibold text-gray-400 hover:text-gray-700 transition-colors">
               💾 Save this circuit as a template
             </button>
           ) : (
@@ -218,12 +262,7 @@ export default function SupersetForm({
                 autoFocus
                 onKeyDown={e => { if (e.key === 'Enter') handleSaveTemplate() }}
               />
-              <button
-                type="button"
-                onClick={handleSaveTemplate}
-                disabled={!templateName.trim() || isSavingTemplate}
-                className="bg-black text-white font-bold px-4 rounded-xl text-sm disabled:opacity-50 active:scale-95 transition-all"
-              >
+              <button type="button" onClick={handleSaveTemplate} disabled={!templateName.trim() || isSavingTemplate} className="bg-black text-white font-bold px-4 rounded-xl text-sm disabled:opacity-50 active:scale-95 transition-all">
                 {isSavingTemplate ? '...' : 'Save'}
               </button>
               <button type="button" onClick={() => setShowSaveTemplate(false)} className="text-gray-400 font-bold px-2">✕</button>
@@ -236,23 +275,22 @@ export default function SupersetForm({
         </div>
       )}
 
+      {/* ── LOGGING / EDIT MODE ── */}
       {mode === 'logging' && (
         <div className="space-y-6">
-          {Array.from({ length: targetSets }).map((_, setIndex) => (
+          {Array.from({ length: numSets }).map((_, setIndex) => (
             <div key={setIndex} className="bg-gray-900 rounded-2xl p-4 shadow-inner space-y-3">
               <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">Set {setIndex + 1}</h4>
 
-              {selectedExerciseIds.filter(id => id !== '').map((exId, exIndex) => {
-                const exerciseDetails = exercises.find(e => e.id === exId)
-                const exerciseName = exerciseDetails?.name || 'Exercise'
-                const rowIncrement = exerciseDetails?.increment_step || exerciseDetails?.settings?.increment_step || 2.5
+              {activeIds.map((exId, exIndex) => {
+                const rowIncrement = getIncrement(exId)
                 const rowData = matrix[exId]?.[setIndex] || { weight: 0, reps: 0 }
 
                 return (
                   <div key={exId} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
                     <div className="text-xs font-bold text-white w-1/3 truncate pr-2">
                       <span className="text-gray-500 mr-2">{String.fromCharCode(65 + exIndex)}</span>
-                      {exerciseName}
+                      {getExerciseName(exId)}
                     </div>
 
                     <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
@@ -279,11 +317,13 @@ export default function SupersetForm({
           ))}
 
           <div className="flex gap-2">
-            <button type="button" onClick={() => setMode('setup')} className="bg-gray-100 text-gray-600 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors">
-              Back
-            </button>
+            {!isEditing && (
+              <button type="button" onClick={() => setMode('setup')} className="bg-gray-100 text-gray-600 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors">
+                Back
+              </button>
+            )}
             <button type="button" onClick={handleSave} disabled={isSubmitting} className="flex-1 bg-blue-600 text-white font-bold rounded-xl py-4 shadow-md hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50">
-              {isSubmitting ? 'Saving...' : 'Save Superset'}
+              {isSubmitting ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Superset'}
             </button>
           </div>
         </div>
