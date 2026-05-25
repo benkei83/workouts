@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 
 type SetData = { weight: number, reps: number }
@@ -27,16 +27,37 @@ export default function StrengthForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
 
+  // Initialize state from existing data OR the active exercise's default settings
   const [sets, setSets] = useState<SetData[]>(() => {
     if (editData?.rawSets) return editData.rawSets
-    return Array.from({ length: initialSets }, () => ({
-      weight: initialWeight,
-      reps: initialReps
+    
+    const defaultEx = exercises.find(ex => ex.id === selectedExercise)
+    const tSets = defaultEx?.settings?.target_sets || initialSets
+    const tReps = defaultEx?.settings?.target_reps || initialReps
+    const tWeight = defaultEx?.settings?.current_weight || initialWeight
+
+    return Array.from({ length: tSets }, () => ({
+      weight: tWeight,
+      reps: tReps
     }))
   })
 
   const activeExerciseData = exercises.find(ex => ex.id === selectedExercise)
   const currentIncrement = activeExerciseData?.increment_step || 2.5
+
+  // SMART PRE-FILL: Auto-update the UI when the user selects a different exercise
+  useEffect(() => {
+    if (!editData && activeExerciseData) {
+      const tSets = activeExerciseData.settings?.target_sets || initialSets
+      const tReps = activeExerciseData.settings?.target_reps || initialReps
+      const tWeight = activeExerciseData.settings?.current_weight || initialWeight
+
+      setSets(Array.from({ length: tSets }, () => ({
+        weight: tWeight,
+        reps: tReps
+      })))
+    }
+  }, [selectedExercise, activeExerciseData, editData, initialSets, initialReps, initialWeight])
 
   const handleInlineCreate = async () => {
     const input = document.getElementById('new-exercise-input') as HTMLInputElement
@@ -64,12 +85,17 @@ export default function StrengthForm({
       reps: parseInt(formData.get('reps') as string) || 5,
       weight: parseFloat(formData.get('weight') as string) || 0,
       increment: parseFloat(formData.get('increment') as string) || 2.5,
-      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5
+      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
+      protocol: formData.get('protocol') as string,
+      max_failures: parseInt(formData.get('max_failures') as string) || 3,
+      deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+      current_failures: activeExerciseData?.settings?.current_failures || 0
     })
     setIsSubmitting(false)
     setUiMode('select')
   }
 
+  // Deep-copy to avoid React 18 strict mode double-firing
   const updateSet = (index: number, field: 'weight' | 'reps', delta: number) => {
     setSets(prev => {
       const newSets = [...prev]
@@ -94,7 +120,7 @@ export default function StrengthForm({
     setIsSubmitting(true)
     if (editData) await deleteStrengthLog(editData.logId, workoutId)
     
-    // Pass historical timestamps and superset mappings back to the database
+    // Pass historical data back to the database to preserve ordering and superset linkage
     const result = await saveStrengthExercise(workoutId, selectedExercise, sets, {
       createdAt: editData?.createdAt,
       supersetId: editData?.supersetId
@@ -120,7 +146,6 @@ export default function StrengthForm({
             <select 
               value={selectedExercise}
               onChange={(e) => setSelectedExercise(e.target.value)}
-              // FIXED: min-w-0 added to prevent pushing icons off screen
               className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
             >
               {exercises.map(ex => (
@@ -158,6 +183,15 @@ export default function StrengthForm({
               <button type="button" onClick={() => setUiMode('select')} className="text-gray-400 font-bold text-sm">Cancel</button>
             </div>
             <form action={handleInlineSettingsSave} className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase">Progression Protocol</label>
+                <select name="protocol" defaultValue={activeExerciseData?.settings?.protocol || 'manual'} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1 text-sm outline-none focus:border-black">
+                  <option value="manual">Manual (No Auto-Progression)</option>
+                  <option value="linear">Linear (e.g., 5x5)</option>
+                  <option value="double">Double Progression (e.g., 3x8-12)</option>
+                </select>
+              </div>
+              
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase">Sets</label>
                 <input type="number" name="sets" defaultValue={activeExerciseData?.settings?.target_sets || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
@@ -166,6 +200,9 @@ export default function StrengthForm({
                 <label className="block text-[10px] font-bold text-gray-500 uppercase">Reps</label>
                 <input type="number" name="reps" defaultValue={activeExerciseData?.settings?.target_reps || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
               </div>
+              
+              <div className="col-span-2 border-t border-gray-200 my-1 pt-2"></div>
+              
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase">Target Weight</label>
                 <input type="number" step="0.5" name="weight" defaultValue={activeExerciseData?.settings?.current_weight || 60} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
@@ -174,11 +211,25 @@ export default function StrengthForm({
                 <label className="block text-[10px] font-bold text-gray-500 uppercase text-blue-500">UI Increment (+/-)</label>
                 <input type="number" step="0.5" name="increment" defaultValue={activeExerciseData?.settings?.increment_step || 2.5} className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 font-bold mt-1" />
               </div>
+              
+              <div className="col-span-2 border-t border-gray-200 my-1 pt-2"></div>
+
               <div className="col-span-2">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Rate</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Weight Step</label>
                 <input type="number" step="0.5" name="progression_rate" defaultValue={activeExerciseData?.settings?.progression_rate || 2.5} className="w-full bg-white border border-green-200 rounded-lg px-3 py-2 font-bold mt-1" />
               </div>
-              <button type="submit" disabled={isSubmitting} className="col-span-2 bg-black text-white font-bold rounded-lg py-3 mt-2">{isSubmitting ? 'Saving...' : 'Save Settings'}</button>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase text-red-500">Max Failures</label>
+                <input type="number" name="max_failures" defaultValue={activeExerciseData?.settings?.max_failures || 3} className="w-full bg-white border border-red-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase text-red-500">Deload Multiplier</label>
+                <input type="number" step="0.5" name="deload_multiplier" defaultValue={activeExerciseData?.settings?.deload_multiplier || 2.0} className="w-full bg-white border border-red-200 rounded-lg px-3 py-2 font-bold mt-1" />
+              </div>
+
+              <button type="submit" disabled={isSubmitting} className="col-span-2 bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all">
+                {isSubmitting ? 'Saving...' : 'Save Settings'}
+              </button>
             </form>
           </div>
         )}

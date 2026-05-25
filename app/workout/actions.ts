@@ -62,7 +62,6 @@ export async function saveCardioLog(formData: FormData) {
   return { success: true }
 }
 
-// FIXED: Now accepts historical data to preserve ordering and superset groupings
 export async function saveStrengthExercise(
   workoutId: string, 
   exerciseId: string, 
@@ -70,8 +69,10 @@ export async function saveStrengthExercise(
   options?: { createdAt?: string, supersetId?: string }
 ) {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
 
-  // Build the payload dynamically so we don't pass undefined to Supabase
+  // 1. SAVE THE EXERCISE LOGS
   const logPayload: any = { workout_id: workoutId }
   if (options?.createdAt) logPayload.created_at = options.createdAt
   if (options?.supersetId) logPayload.superset_id = options.supersetId
@@ -103,6 +104,90 @@ export async function saveStrengthExercise(
     console.error("Supabase sets error:", setsError)
     await supabase.from('strength_logs').delete().eq('id', strengthLog.id)
     return { error: setsError.message } 
+  }
+
+  // 2. THE PROGRESSION ENGINE
+  const { data: setting } = await supabase
+    .from('user_exercise_settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .eq('is_active', true)
+    .single()
+
+  if (setting && setting.protocol && setting.protocol !== 'manual') {
+    let newFailures = Number(setting.current_failures) || 0
+    let newWeight = Number(setting.current_weight) || 0
+    let changed = false
+
+    const targetSets = Number(setting.target_sets) || 5
+    const targetReps = Number(setting.target_reps) || 5
+    const progRate = Number(setting.progression_rate) || 2.5
+    const maxFails = Number(setting.max_failures) || 3
+    const deloadMult = Number(setting.deload_multiplier) || 2.0
+
+    const completedSetsCount = sets.length
+    const allSetsHitTarget = sets.every(s => Number(s.reps) >= targetReps)
+
+    if (setting.protocol === 'linear') { 
+      // 5x5 STYLE
+      if (completedSetsCount >= targetSets && allSetsHitTarget) {
+        newWeight += progRate
+        newFailures = 0
+        changed = true
+      } else {
+        newFailures += 1
+        changed = true
+        if (newFailures >= maxFails) {
+          newWeight = Math.max(0, newWeight - (progRate * deloadMult))
+          newFailures = 0
+        }
+      }
+    } else if (setting.protocol === 'double') { 
+      // 3x12 STYLE (Lower bound is Target - 4)
+      const lowerBound = Math.max(1, targetReps - 4) 
+      const allSetsHitMaintain = sets.every(s => Number(s.reps) >= lowerBound)
+
+      if (completedSetsCount >= targetSets && allSetsHitTarget) {
+        newWeight += progRate
+        newFailures = 0
+        changed = true
+      } else if (completedSetsCount >= targetSets && allSetsHitMaintain) {
+        if (newFailures !== 0) {
+          newFailures = 0 
+          changed = true
+        }
+      } else {
+        newFailures += 1
+        changed = true
+        if (newFailures >= maxFails) {
+          newWeight = Math.max(0, newWeight - (progRate * deloadMult))
+          newFailures = 0
+        }
+      }
+    }
+
+    // 3. APPLY SETTINGS UPDATE
+    if (changed) {
+      await supabase.from('user_exercise_settings')
+        .update({ is_active: false, valid_to: new Date().toISOString() })
+        .eq('id', setting.id)
+
+      await supabase.from('user_exercise_settings').insert({
+        user_id: setting.user_id,
+        exercise_id: setting.exercise_id,
+        current_weight: newWeight,
+        target_sets: setting.target_sets,
+        target_reps: setting.target_reps,
+        increment_step: setting.increment_step,
+        progression_rate: setting.progression_rate,
+        protocol: setting.protocol,
+        current_failures: newFailures,
+        max_failures: setting.max_failures,
+        deload_multiplier: setting.deload_multiplier,
+        is_active: true
+      })
+    }
   }
 
   revalidatePath(`/workout/${workoutId}`)
@@ -293,11 +378,14 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
     target_reps: settings.reps || null,
     increment_step: settings.increment || 2.5,
     progression_rate: settings.progression_rate || 2.5,
+    protocol: settings.protocol || 'manual',
+    current_failures: settings.current_failures || 0,
+    max_failures: settings.max_failures || 3,
+    deload_multiplier: settings.deload_multiplier || 2.0,
     is_active: true
   })
 
   if (error) return { error: 'Failed to update settings' }
-
   revalidatePath('/', 'layout') 
   return { success: true }
 }
