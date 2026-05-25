@@ -78,7 +78,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     }
   })
 
-  // 4. Fetch programs with full workout/exercise tree
+  // 4. Fetch programs with full workout/exercise tree (including superset templates)
   const { data: programs } = await supabase
     .from('programs')
     .select(`
@@ -87,7 +87,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         *,
         program_exercises (
           *,
-          exercises ( id, name )
+          exercises ( id, name ),
+          superset_templates ( id, name, superset_template_exercises ( sort_order, exercise_id, exercises(id, name) ) )
         )
       )
     `)
