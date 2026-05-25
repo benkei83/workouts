@@ -108,7 +108,7 @@ export default function SupersetForm({
     setIsSubmitting(true)
     const result = await saveSupersetLog(workoutId, matrix)
     setIsSubmitting(false)
-    if (result?.error) {
+    if (result && 'error' in result) {
       alert(`Error: ${result.error}`)
     } else {
       onCancel()
@@ -125,7 +125,7 @@ export default function SupersetForm({
     setIsSavingTemplate(true)
     const result = await saveSupersetTemplate(templateName.trim(), validIds)
     setIsSavingTemplate(false)
-    if (result?.error) {
+    if (result && 'error' in result) {
       alert(`Error saving template: ${result.error}`)
     } else {
       setTemplateName('')
