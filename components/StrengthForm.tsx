@@ -5,7 +5,9 @@ import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateEx
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
-import { getDeloadStatus, getSuccessStatus } from '@/lib/deload'
+import MaintenanceBadge from '@/components/MaintenanceBadge'
+import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
+import type { ComputedStreak } from '@/lib/streaks'
 
 type SetData = { weight: number, reps: number }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
@@ -15,6 +17,7 @@ type Exercise = {
   increment_step?: number
   settings?: any
   lastSession?: LastSession | null
+  computedStreak?: ComputedStreak
 }
 
 export default function StrengthForm({
@@ -97,6 +100,7 @@ export default function StrengthForm({
     await updateExerciseSettings(selectedExercise, {
       sets: parseInt(formData.get('sets') as string) || 5,
       reps: parseInt(formData.get('reps') as string) || 5,
+      reps_min: parseInt(formData.get('reps_min') as string) || 8,
       weight: parseFloat(formData.get('weight') as string) || 0,
       increment: parseFloat(formData.get('increment') as string) || 2.5,
       progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
@@ -213,16 +217,20 @@ export default function StrengthForm({
           </div>
         )}
 
-        {/* Success streak */}
+        {/* Streak badges (log-computed) */}
         {uiMode === 'select' && (() => {
-          const ss = getSuccessStatus(activeExerciseData?.settings)
-          return ss ? <SuccessBadge status={ss} /> : null
-        })()}
-
-        {/* Deload warning */}
-        {uiMode === 'select' && (() => {
-          const ds = getDeloadStatus(activeExerciseData?.settings)
-          return ds ? <DeloadBadge status={ds} /> : null
+          const streak = activeExerciseData?.computedStreak
+          const settings = activeExerciseData?.settings
+          const ss = getSuccessStatus(settings, streak)
+          const ms = getMaintenanceStatus(settings, streak)
+          const ds = getDeloadStatus(settings, streak)
+          return (
+            <>
+              {ss && <SuccessBadge status={ss} />}
+              {ms && <MaintenanceBadge status={ms} />}
+              {ds && <DeloadBadge status={ds} />}
+            </>
+          )
         })()}
 
         {/* Last session reference */}

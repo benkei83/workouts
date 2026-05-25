@@ -7,6 +7,10 @@ import SupersetForm from '@/components/SupersetForm'
 import ProgramGuide from '@/components/ProgramGuide'
 import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram, saveStrengthExercise, saveSupersetLog } from '../actions'
 import { enqueuePendingOp, dequeuePendingOp, getPendingOps, clearPendingOpsForWorkout, type PendingOp } from '@/lib/pendingQueue'
+import DeloadBadge from '@/components/DeloadBadge'
+import SuccessBadge from '@/components/SuccessBadge'
+import MaintenanceBadge from '@/components/MaintenanceBadge'
+import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import Link from 'next/link'
 
 type StrengthCard = {
@@ -324,6 +328,12 @@ export function InteractiveCanvas({
                   />
                 )
               }
+              const exData = exercises.find((e: any) => e.id === lift.exerciseId) as any
+              const streak = exData?.computedStreak
+              const exSettings = exData?.settings
+              const ds = getDeloadStatus(exSettings, streak)
+              const ss = getSuccessStatus(exSettings, streak)
+              const ms = getMaintenanceStatus(exSettings, streak)
               return (
                 <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
                   <div className="absolute -top-2 -right-2 flex gap-1 z-10">
@@ -345,6 +355,9 @@ export function InteractiveCanvas({
                   <p className="text-sm text-gray-500 font-medium">
                     {lift.setsCount} sets • {lift.repsArray.join('-')} reps
                   </p>
+                  {ss && <SuccessBadge status={ss} />}
+                  {ms && <MaintenanceBadge status={ms} />}
+                  {ds && <DeloadBadge status={ds} />}
                 </div>
               )
             }
@@ -386,22 +399,35 @@ export function InteractiveCanvas({
                 </div>
                 {/* Individual exercises inside the group */}
                 <div className="bg-white divide-y divide-blue-50">
-                  {item.cards.map((lift, liftIdx) => (
-                    <div key={lift.logId} className="px-4 py-3 flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                          <span className="text-xs font-bold text-blue-400 w-4">{String.fromCharCode(65 + liftIdx)}</span>
-                          {lift.name}
-                        </p>
-                        <p className="text-xs text-gray-500 font-medium ml-6">
-                          {lift.setsCount} sets • {lift.repsArray.join('-')} reps
+                  {item.cards.map((lift, liftIdx) => {
+                    const exData = exercises.find((e: any) => e.id === lift.exerciseId) as any
+                    const streak = exData?.computedStreak
+                    const exSettings = exData?.settings
+                    const ds = getDeloadStatus(exSettings, streak)
+                    const ss = getSuccessStatus(exSettings, streak)
+                    const ms = getMaintenanceStatus(exSettings, streak)
+                    return (
+                      <div key={lift.logId} className="px-4 py-3 flex justify-between items-start">
+                        <div className="min-w-0 flex-1 pr-3">
+                          <p className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-400 w-4">{String.fromCharCode(65 + liftIdx)}</span>
+                            {lift.name}
+                          </p>
+                          <p className="text-xs text-gray-500 font-medium ml-6">
+                            {lift.setsCount} sets • {lift.repsArray.join('-')} reps
+                          </p>
+                          <div className="ml-6">
+                            {ss && <SuccessBadge status={ss} compact />}
+                            {ms && <MaintenanceBadge status={ms} compact />}
+                            {ds && <DeloadBadge status={ds} compact />}
+                          </div>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm shrink-0">
+                          {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
                         </p>
                       </div>
-                      <p className="font-bold text-gray-900 text-sm">
-                        {lift.maxWeight} <span className="text-xs font-normal text-gray-500">kg</span>
-                      </p>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )

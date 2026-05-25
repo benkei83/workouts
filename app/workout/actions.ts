@@ -96,14 +96,45 @@ export async function saveStrengthExercise(
     actual_reps: set.reps
   }))
 
-  const { error: setsError } = await supabase
+  const { data: insertedSets, error: setsError } = await supabase
     .from('strength_sets')
     .insert(setsToInsert)
+    .select('id, actual_weight, actual_reps')
 
-  if (setsError) {
+  if (setsError || !insertedSets) {
     console.error("Supabase sets error:", setsError)
     await supabase.from('strength_logs').delete().eq('id', strengthLog.id)
-    return { error: setsError.message } 
+    return { error: setsError?.message || 'Failed to save sets' }
+  }
+
+  // ── PR detection (per rep count) ──────────────────────────
+  // For each unique rep count in this session, check if the heaviest set at
+  // that rep count beats the all-time record for this exercise at that rep count.
+  // e.g. 80kg × 5 can be a 5RM PR independently of whether 100kg × 1 is a 1RM PR.
+  const uniqueRepCounts = [...new Set(insertedSets.map(s => Number(s.actual_reps)))]
+
+  for (const reps of uniqueRepCounts) {
+    if (reps <= 0) continue
+    const setsAtReps = insertedSets.filter(s => Number(s.actual_reps) === reps)
+    const maxWeightAtReps = Math.max(...setsAtReps.map(s => Number(s.actual_weight)))
+    if (maxWeightAtReps <= 0) continue
+
+    const { data: prevBest } = await supabase
+      .from('strength_sets')
+      .select('actual_weight')
+      .eq('exercise_id', exerciseId)
+      .eq('actual_reps', reps)
+      .neq('strength_log_id', strengthLog.id)
+      .order('actual_weight', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (maxWeightAtReps > (prevBest?.actual_weight ?? 0)) {
+      const prSet = setsAtReps.find(s => Number(s.actual_weight) === maxWeightAtReps)
+      if (prSet) {
+        await supabase.from('strength_sets').update({ is_pr: true }).eq('id', prSet.id)
+      }
+    }
   }
 
   // 2. THE PROGRESSION ENGINE
@@ -161,8 +192,8 @@ export async function saveStrengthExercise(
         changed = true
       }
     } else if (setting.protocol === 'double') {
-      // 3x12 STYLE (Lower bound is Target - 4)
-      const lowerBound = Math.max(1, targetReps - 4)
+      // Rep-range style (e.g. 3×8-12). Lower bound is explicit target_reps_min (default 8).
+      const lowerBound = Math.max(1, Number(setting.target_reps_min) || 8)
       const allSetsHitMaintain = sets.every(s => Number(s.reps) >= lowerBound)
 
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
@@ -208,6 +239,7 @@ export async function saveStrengthExercise(
         current_weight: newWeight,
         target_sets: setting.target_sets,
         target_reps: setting.target_reps,
+        target_reps_min: setting.target_reps_min ?? 8,
         increment_step: setting.increment_step,
         progression_rate: setting.progression_rate,
         protocol: setting.protocol,
@@ -396,6 +428,7 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
     current_weight: settings.weight || null,
     target_sets: settings.sets || null,
     target_reps: settings.reps || null,
+    target_reps_min: settings.reps_min || 8,
     increment_step: settings.increment || 2.5,
     progression_rate: settings.progression_rate || 2.5,
     protocol: settings.protocol || 'manual',

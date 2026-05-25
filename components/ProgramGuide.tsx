@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { saveStrengthExercise, saveSupersetLog, advanceRotation } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
-import { getDeloadStatus, getSuccessStatus } from '@/lib/deload'
+import MaintenanceBadge from '@/components/MaintenanceBadge'
+import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
+import type { ComputedStreak } from '@/lib/streaks'
 
 type SetData = { weight: number; reps: number }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
-type Exercise = { id: string; name: string; settings?: any; increment_step?: number; lastSession?: LastSession | null }
+type Exercise = { id: string; name: string; settings?: any; increment_step?: number; lastSession?: LastSession | null; computedStreak?: ComputedStreak }
 
 type SupersetTemplateExercise = {
   sort_order: number
@@ -291,12 +293,18 @@ export default function ProgramGuide({
               </div>
             )}
             {(() => {
-              const ss = getSuccessStatus(currentExercise?.settings)
-              return ss ? <SuccessBadge status={ss} /> : null
-            })()}
-            {(() => {
-              const ds = getDeloadStatus(currentExercise?.settings)
-              return ds ? <DeloadBadge status={ds} /> : null
+              const streak = currentExercise?.computedStreak
+              const settings = currentExercise?.settings
+              const ss = getSuccessStatus(settings, streak)
+              const ms = getMaintenanceStatus(settings, streak)
+              const ds = getDeloadStatus(settings, streak)
+              return (
+                <>
+                  {ss && <SuccessBadge status={ss} />}
+                  {ms && <MaintenanceBadge status={ms} />}
+                  {ds && <DeloadBadge status={ds} />}
+                </>
+              )
             })()}
             <div className="space-y-2">
               {currentSets.map((set, i) => (
@@ -358,8 +366,10 @@ export default function ProgramGuide({
                     const exIncrement = ex?.increment_step || ex?.settings?.increment_step || 2.5
                     const rowData = currentMatrix[te.exercise_id]?.[setIndex] || { weight: 0, reps: 0 }
                     const lastMax = ex?.lastSession ? Math.max(...ex.lastSession.sets.map(s => s.weight)) : null
-                    const exDeloadStatus = getDeloadStatus(ex?.settings)
-                    const exSuccessStatus = getSuccessStatus(ex?.settings)
+                    const exStreak = ex?.computedStreak
+                    const exDeloadStatus = getDeloadStatus(ex?.settings, exStreak)
+                    const exSuccessStatus = getSuccessStatus(ex?.settings, exStreak)
+                    const exMaintenanceStatus = getMaintenanceStatus(ex?.settings, exStreak)
                     return (
                       <div key={te.exercise_id} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
                         <div className="w-1/3 pr-2 min-w-0">
@@ -373,6 +383,7 @@ export default function ProgramGuide({
                             </div>
                           )}
                           {exSuccessStatus && <SuccessBadge status={exSuccessStatus} compact />}
+                          {exMaintenanceStatus && <MaintenanceBadge status={exMaintenanceStatus} compact />}
                           {exDeloadStatus && <DeloadBadge status={exDeloadStatus} compact />}
                         </div>
 

@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
-import { getDeloadStatus, getSuccessStatus } from '@/lib/deload'
+import MaintenanceBadge from '@/components/MaintenanceBadge'
+import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
+import type { ComputedStreak } from '@/lib/streaks'
 
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
 type Exercise = {
@@ -18,6 +20,7 @@ type Exercise = {
     increment_step?: number
   } | null
   lastSession?: LastSession | null
+  computedStreak?: ComputedStreak
 }
 
 type SupersetTemplate = {
@@ -343,9 +346,12 @@ export default function SupersetForm({
                 const rowData = matrix[exId]?.[setIndex] || { weight: 0, reps: 0 }
                 const lastSession = getLastSession(exId)
                 const lastMax = lastSession ? Math.max(...lastSession.sets.map(s => s.weight)) : null
-                const exSettings = exercises.find(e => e.id === exId)?.settings
-                const deloadStatus = getDeloadStatus(exSettings)
-                const successStatus = getSuccessStatus(exSettings)
+                const exData = exercises.find(e => e.id === exId)
+                const exSettings = exData?.settings
+                const exStreak = exData?.computedStreak
+                const deloadStatus = getDeloadStatus(exSettings, exStreak)
+                const successStatus = getSuccessStatus(exSettings, exStreak)
+                const maintenanceStatus = getMaintenanceStatus(exSettings, exStreak)
 
                 return (
                   <div key={exId} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
@@ -360,6 +366,7 @@ export default function SupersetForm({
                         </div>
                       )}
                       {successStatus && <SuccessBadge status={successStatus} compact />}
+                      {maintenanceStatus && <MaintenanceBadge status={maintenanceStatus} compact />}
                       {deloadStatus && <DeloadBadge status={deloadStatus} compact />}
                     </div>
 

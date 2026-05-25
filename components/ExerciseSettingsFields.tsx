@@ -6,6 +6,7 @@ type Settings = {
   protocol?: string
   target_sets?: number
   target_reps?: number
+  target_reps_min?: number
   current_weight?: number
   increment_step?: number
   progression_rate?: number
@@ -78,14 +79,18 @@ function NumericStepper({
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 export default function ExerciseSettingsFields({ settings }: { settings?: Settings | null }) {
+  const [protocol,     setProtocol]     = useState(settings?.protocol         ?? 'manual')
   const [sets,         setSets]         = useState(settings?.target_sets      ?? 5)
   const [reps,         setReps]         = useState(settings?.target_reps      ?? 5)
+  const [repsMin,      setRepsMin]      = useState(settings?.target_reps_min  ?? 8)
   const [weight,       setWeight]       = useState(settings?.current_weight   ?? 60)
   const [increment,    setIncrement]    = useState(settings?.increment_step   ?? 2.5)
   const [progRate,     setProgRate]     = useState(settings?.progression_rate ?? 2.5)
   const [minSuccesses, setMinSuccesses] = useState(settings?.min_successes    ?? 1)
   const [maxFailures,  setMaxFailures]  = useState(settings?.max_failures     ?? 3)
   const [deloadMult,   setDeloadMult]   = useState(settings?.deload_multiplier ?? 2.0)
+
+  const isDouble = protocol === 'double'
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -94,7 +99,8 @@ export default function ExerciseSettingsFields({ settings }: { settings?: Settin
         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Progression Protocol</label>
         <select
           name="protocol"
-          defaultValue={settings?.protocol || 'manual'}
+          value={protocol}
+          onChange={e => setProtocol(e.target.value)}
           className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1 text-sm outline-none focus:border-black"
         >
           <option value="manual">Manual (No Auto-Progression)</option>
@@ -103,9 +109,34 @@ export default function ExerciseSettingsFields({ settings }: { settings?: Settin
         </select>
       </div>
 
-      {/* Sets / Reps */}
+      {/* Sets + Reps (single target for linear/manual, range for double) */}
       <NumericStepper label="Sets" name="sets" value={sets} onChange={setSets} step={1} min={1} />
-      <NumericStepper label="Reps" name="reps" value={reps} onChange={setReps} step={1} min={1} />
+
+      {isDouble ? (
+        <>
+          {/* "reps" = upper bound (max), "reps_min" = lower bound */}
+          <NumericStepper
+            label="Min Reps"
+            name="reps_min"
+            value={repsMin}
+            onChange={v => setRepsMin(Math.min(v, reps - 1))}
+            step={1} min={1}
+          />
+          <NumericStepper
+            label="Max Reps"
+            name="reps"
+            value={reps}
+            onChange={v => setReps(Math.max(v, repsMin + 1))}
+            step={1} min={1}
+          />
+        </>
+      ) : (
+        <>
+          <NumericStepper label="Reps" name="reps" value={reps} onChange={setReps} step={1} min={1} />
+          {/* Always submit reps_min so the engine always has it */}
+          <input type="hidden" name="reps_min" value={repsMin} />
+        </>
+      )}
 
       <div className="col-span-2 border-t border-gray-200 my-1 pt-2" />
 

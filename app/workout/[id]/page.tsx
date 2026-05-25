@@ -6,6 +6,7 @@ import { InteractiveCanvas } from './InteractiveCanvas'
 import { finishWorkout } from '../actions'
 import WorkoutOptions from '@/components/WorkoutOptions'
 import WorkoutSubtitle from '@/components/WorkoutSubtitle'
+import { computeExerciseStreak } from '@/lib/streaks'
 
 // ==========================================
 // THE PAGE SHELL
@@ -124,16 +125,18 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   const recentWorkoutIds = (recentWorkouts || []).map(w => w.id)
   const lastSessionMap: Record<string, { date: string; sets: { weight: number; reps: number }[] }> = {}
+  let recentLogs: { workout_id: string; strength_sets: any[] }[] = []
 
   if (recentWorkoutIds.length > 0) {
-    const { data: recentLogs } = await supabase
+    const { data: fetchedLogs } = await supabase
       .from('strength_logs')
       .select('workout_id, strength_sets(exercise_id, actual_weight, actual_reps, set_number)')
       .in('workout_id', recentWorkoutIds)
+    recentLogs = (fetchedLogs || []) as typeof recentLogs
 
     // Walk workouts newest-first; record the FIRST occurrence of each exercise
     for (const w of (recentWorkouts || [])) {
-      const logsForWorkout = (recentLogs || []).filter(l => l.workout_id === w.id)
+      const logsForWorkout = recentLogs.filter(l => l.workout_id === w.id)
       const seenExIds = new Set<string>()
 
       for (const log of logsForWorkout) {
@@ -161,10 +164,16 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     }
   }
 
-  // Merge lastSession into allExercises
+  // Merge lastSession + log-computed streak into allExercises
   const allExercisesWithHistory = allExercises.map(ex => ({
     ...ex,
     lastSession: lastSessionMap[ex.id] ?? null,
+    computedStreak: computeExerciseStreak(
+      ex.id,
+      ex.settings,
+      recentWorkouts || [],
+      recentLogs
+    ),
   }))
 
 

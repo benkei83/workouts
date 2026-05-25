@@ -146,19 +146,36 @@ async function Dashboard() {
 // ==========================================
 async function WorkoutManager({ userId }: { userId: string }) {
   const supabase = await createClient()
-  
-  const { data: workouts, error } = await supabase
-    .from('workouts')
-    .select(`
-      id,
-      title,
-      created_at,
-      total_duration_mins,
-      running_logs ( id, distance_km ),
-      strength_logs ( id )
-    `)
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+
+  const [{ data: workouts, error }, { data: exerciseSettings }] = await Promise.all([
+    supabase
+      .from('workouts')
+      .select(`
+        id,
+        title,
+        created_at,
+        total_duration_mins,
+        running_logs ( id, distance_km ),
+        strength_logs (
+          id,
+          strength_sets ( exercise_id, is_pr, actual_reps, exercises ( name ) )
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('user_exercise_settings')
+      .select('exercise_id, protocol, target_sets, target_reps, target_reps_min')
+      .eq('user_id', userId)
+      .eq('is_active', true),
+  ])
+
+  // Build settings lookup for outcome computation
+  const settingsMap = Object.fromEntries(
+    (exerciseSettings || [])
+      .filter(s => s.protocol && s.protocol !== 'manual')
+      .map(s => [s.exercise_id, s])
+  )
 
   if (error) return <p className="text-red-500 text-center py-4">Error loading workouts.</p>
 
@@ -206,30 +223,111 @@ async function WorkoutManager({ userId }: { userId: string }) {
           <ul className="space-y-3">
             {historyWorkouts.map((workout) => {
               const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-              const hasRunning = workout.running_logs && workout.running_logs.length > 0
-              const hasStrength = workout.strength_logs && workout.strength_logs.length > 0
-              
-              let tags = []
-              if (hasRunning) tags.push('🏃 Cardio')
-              if (hasStrength) tags.push('🏋️ Strength')
-              if (!hasRunning && !hasStrength) tags.push('📝 Empty Session')
+              const hasRunning = (workout.running_logs?.length ?? 0) > 0
+              const hasStrength = (workout.strength_logs?.length ?? 0) > 0
 
-              // THE FIX: The <li> is now the parent, and the <Link> is the child!
+              // Derive PR flag, exercise names, and per-exercise outcomes from nested sets
+              const allSets = (workout.strength_logs ?? []).flatMap((l: any) => l.strength_sets ?? [])
+              const hasPR = allSets.some((s: any) => s.is_pr)
+
+              // Group sets by exercise (preserving first-seen order)
+              const exerciseOrder: string[] = []
+              const setsByExercise = new Map<string, { name: string; reps: number[] }>()
+              for (const s of allSets as any[]) {
+                const exId: string = s.exercise_id
+                if (!exId) continue
+                if (!setsByExercise.has(exId)) {
+                  exerciseOrder.push(exId)
+                  setsByExercise.set(exId, { name: s.exercises?.name ?? 'Unknown', reps: [] })
+                }
+                setsByExercise.get(exId)!.reps.push(Number(s.actual_reps))
+              }
+
+              const exerciseNames = exerciseOrder.map(id => setsByExercise.get(id)!.name)
+
+              // Compute outcome for exercises that have a progression protocol
+              type Outcome = 'success' | 'maintenance' | 'failure'
+              const outcomes: { name: string; outcome: Outcome }[] = []
+              for (const exId of exerciseOrder) {
+                const cfg = (settingsMap as any)[exId]
+                if (!cfg) continue
+                const { reps } = setsByExercise.get(exId)!
+                const n = reps.length
+                const targetSets = Number(cfg.target_sets) || 5
+                const targetReps = Number(cfg.target_reps) || 5
+                const targetRepsMin = Number(cfg.target_reps_min) || 8
+                const allTop   = reps.every(r => r >= targetReps)
+                const allFloor = reps.every(r => r >= targetRepsMin)
+                let outcome: Outcome
+                if (n >= targetSets && allTop) outcome = 'success'
+                else if (cfg.protocol === 'double' && n >= targetSets && allFloor) outcome = 'maintenance'
+                else outcome = 'failure'
+                outcomes.push({ name: setsByExercise.get(exId)!.name, outcome })
+              }
+
+              // Running summary
+              const totalKm = (workout.running_logs ?? []).reduce((sum: number, l: any) => sum + (l.distance_km ?? 0), 0)
+
               return (
                 <li key={workout.id}>
-                  <Link href={`/workout/${workout.id}`} className="block bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-gray-300 transition-colors group cursor-pointer">
-                    <div className="flex items-center justify-between mb-2">
-                      <strong className="block text-gray-900 font-bold">{workout.title}</strong>
-                      <span className="text-xs text-gray-400">{date}</span>
+                  <Link href={`/workout/${workout.id}`} className="block bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:border-gray-300 transition-colors cursor-pointer">
+                    {/* Title row */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <strong className="text-gray-900 font-bold leading-snug">{workout.title}</strong>
+                      <span className="text-xs text-gray-400 shrink-0">{date}</span>
                     </div>
-                    <div className="flex gap-2 mb-2">
-                      {tags.map(tag => (
-                        <span key={tag} className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded-md">
-                          {tag}
+
+                    {/* Type tags + PR badge */}
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {hasRunning && (
+                        <span className="text-xs font-semibold bg-orange-50 text-orange-600 border border-orange-100 px-2 py-0.5 rounded-md">
+                          🏃 {totalKm > 0 ? `${totalKm.toFixed(1)} km` : 'Cardio'}
                         </span>
-                      ))}
+                      )}
+                      {hasStrength && (
+                        <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md">
+                          🏋️ Strength
+                        </span>
+                      )}
+                      {hasPR && (
+                        <span className="text-xs font-bold bg-yellow-50 text-yellow-700 border border-yellow-100 px-2 py-0.5 rounded-md">
+                          🏆 PR
+                        </span>
+                      )}
+                      {!hasRunning && !hasStrength && (
+                        <span className="text-xs font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-md">
+                          📝 Empty
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-500 font-medium">{workout.total_duration_mins} mins</p>
+
+                    {/* Exercise names + outcome dots */}
+                    {exerciseNames.length > 0 && (
+                      <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                        <p className="text-xs text-gray-400 truncate">
+                          {exerciseNames.slice(0, 4).join(' · ')}
+                          {exerciseNames.length > 4 && ` +${exerciseNames.length - 4}`}
+                        </p>
+                        {outcomes.length > 0 && (
+                          <div className="flex gap-1 shrink-0">
+                            {outcomes.map((o, i) => (
+                              <span
+                                key={i}
+                                title={`${o.name}: ${o.outcome}`}
+                                className={`inline-block w-2 h-2 rounded-full ${
+                                  o.outcome === 'success'     ? 'bg-green-400' :
+                                  o.outcome === 'maintenance' ? 'bg-blue-400'  :
+                                                                'bg-red-400'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Duration */}
+                    <p className="text-xs text-gray-400 font-medium">{workout.total_duration_mins} mins</p>
                   </Link>
                 </li>
               )
