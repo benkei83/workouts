@@ -102,9 +102,11 @@ async function Dashboard() {
         
         {user ? (
           <div className="flex items-center gap-4">
-            {/* NEW: Link to the Exercise Dictionary */}
             <Link href="/exercises" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
               Exercises
+            </Link>
+            <Link href="/programs" className="text-sm font-bold text-gray-900 hover:text-purple-600 transition-colors">
+              Programs
             </Link>
             <form action={signOut}>
               <button className="text-sm font-bold text-gray-500 hover:text-black transition-colors">

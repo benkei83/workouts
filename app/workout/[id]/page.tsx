@@ -68,15 +68,37 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     .eq('user_id', user.id)
     .eq('is_active', true)
 
-  // 3. Merge them together 
+  // 3. Merge them together
   const allExercises = (allExercisesRaw || []).map(ex => {
     const setting = (userSettings || []).find(s => s.exercise_id === ex.id)
     return {
       ...ex,
-      settings: setting || null, // Pass the whole settings object for the inline editor
-      increment_step: setting?.increment_step || 2.5 
+      settings: setting || null,
+      increment_step: setting?.increment_step || 2.5
     }
   })
+
+  // 4. Fetch programs with full workout/exercise tree
+  const { data: programs } = await supabase
+    .from('programs')
+    .select(`
+      *,
+      program_workouts (
+        *,
+        program_exercises (
+          *,
+          exercises ( id, name )
+        )
+      )
+    `)
+    .order('name')
+
+  // 5. Fetch user's active program (for rotation tracking)
+  const { data: activeProgram } = await supabase
+    .from('user_active_programs')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle()
 
   const dateObj = new Date(workout.created_at)
   const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
@@ -114,11 +136,13 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
       </header>
 
       <div className="px-6 mt-6">
-        <InteractiveCanvas 
-          workoutId={workout.id} 
-          initialRunningLogs={workout.running_logs || []} 
+        <InteractiveCanvas
+          workoutId={workout.id}
+          initialRunningLogs={workout.running_logs || []}
           initialStrengthLogs={workout.strength_logs || []}
           exercises={allExercises}
+          programs={programs || []}
+          activeProgram={activeProgram || null}
         />
       </div>
     </>

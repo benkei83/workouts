@@ -386,6 +386,165 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
   })
 
   if (error) return { error: 'Failed to update settings' }
-  revalidatePath('/', 'layout') 
+  revalidatePath('/', 'layout')
   return { success: true }
+}
+
+// ============================================================
+// PROGRAM ACTIONS
+// ============================================================
+
+export async function fetchPrograms() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data } = await supabase
+    .from('programs')
+    .select(`
+      *,
+      program_workouts (
+        *,
+        program_exercises (
+          *,
+          exercises ( id, name )
+        )
+      )
+    `)
+    .order('name')
+
+  return data || []
+}
+
+export async function createProgram(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const name = formData.get('name') as string
+  const description = (formData.get('description') as string) || null
+  const split = parseInt(formData.get('split') as string) || 1
+
+  // Note: programs table needs a user_id column (migration) for ownership — inserting without for now
+  const { data: program, error } = await supabase
+    .from('programs')
+    .insert({ name, description })
+    .select('id')
+    .single()
+
+  if (error || !program) return { error: 'Failed to create program' }
+
+  const dayNames: Record<number, string[]> = {
+    1: ['Workout A'],
+    2: ['Workout A', 'Workout B'],
+    3: ['Workout A', 'Workout B', 'Workout C'],
+  }
+  const names = dayNames[split] || ['Workout A']
+
+  const workoutDays = names.map((dayName, i) => ({
+    program_id: program.id,
+    name: dayName,
+    rotation_order: i + 1,
+  }))
+
+  await supabase.from('program_workouts').insert(workoutDays)
+
+  revalidatePath('/programs')
+  return { success: true, id: program.id }
+}
+
+export async function updateProgram(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const id = formData.get('id') as string
+  const name = formData.get('name') as string
+  const description = (formData.get('description') as string) || null
+
+  const { error } = await supabase
+    .from('programs')
+    .update({ name, description })
+    .eq('id', id)
+
+  if (error) return { error: 'Failed to update program' }
+  revalidatePath('/programs')
+  return { success: true }
+}
+
+export async function deleteProgram(id: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('programs')
+    .delete()
+    .eq('id', id)
+
+  if (error) return { error: 'Failed to delete program' }
+  revalidatePath('/programs')
+  return { success: true }
+}
+
+export async function addProgramExercise(programWorkoutId: string, exerciseId: string, sortOrder: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase.from('program_exercises').insert({
+    program_workout_id: programWorkoutId,
+    exercise_id: exerciseId,
+    sort_order: sortOrder,
+  })
+
+  if (error) return { error: 'Failed to add exercise' }
+  revalidatePath('/programs')
+  return { success: true }
+}
+
+export async function removeProgramExercise(programExerciseId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('program_exercises')
+    .delete()
+    .eq('id', programExerciseId)
+
+  if (error) return { error: 'Failed to remove exercise' }
+  revalidatePath('/programs')
+  return { success: true }
+}
+
+export async function advanceRotation(programId: string, nextIndex: number) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  await supabase
+    .from('user_active_programs')
+    .upsert({
+      user_id: user.id,
+      program_id: programId,
+      current_rotation_index: nextIndex,
+      started_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+
+  return { success: true }
+}
+
+export async function fetchUserActiveProgram() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('user_active_programs')
+    .select('*')
+    .eq('user_id', user.id)
+    .single()
+
+  return data || null
 }
