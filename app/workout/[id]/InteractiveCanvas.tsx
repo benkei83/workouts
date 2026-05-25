@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect, useRef } from 'react'
 import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
 import SupersetForm from '@/components/SupersetForm'
 import ProgramGuide from '@/components/ProgramGuide'
-import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram } from '../actions'
+import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram, saveStrengthExercise, saveSupersetLog } from '../actions'
+import { enqueuePendingOp, dequeuePendingOp, getPendingOps, clearPendingOpsForWorkout, type PendingOp } from '@/lib/pendingQueue'
 import Link from 'next/link'
 
 type StrengthCard = {
@@ -39,6 +40,10 @@ type SupersetTemplate = {
   }[]
 }
 
+type PendingCard =
+  | { pendingId: string; type: 'strength'; exerciseId: string; name: string; sets: { weight: number; reps: number }[]; status: 'saving' | 'error'; errorMessage?: string }
+  | { pendingId: string; type: 'superset'; matrix: Record<string, { weight: number; reps: number }[]>; names: Record<string, string>; status: 'saving' | 'error'; errorMessage?: string }
+
 export function InteractiveCanvas({
   workoutId,
   initialRunningLogs = [],
@@ -63,6 +68,98 @@ export function InteractiveCanvas({
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [isPending, startTransition] = useTransition()
   const [isCreatingProgram, setIsCreatingProgram] = useState(false)
+
+  // ── Optimistic / offline state ────────────────────────────
+  const [pendingCards, setPendingCards] = useState<PendingCard[]>([])
+  const [staleOps, setStaleOps] = useState<PendingOp[]>([])
+  const prevLogCount = useRef(initialStrengthLogs.length)
+
+  // On mount: surface any ops that survived a crash / tab close
+  useEffect(() => {
+    const stale = getPendingOps().filter(op => op.workoutId === workoutId)
+    if (stale.length > 0) setStaleOps(stale)
+  }, [workoutId])
+
+  // When server confirms new logs, clear all in-flight 'saving' pending cards
+  useEffect(() => {
+    const newCount = initialStrengthLogs.length
+    if (newCount > prevLogCount.current) {
+      setPendingCards(prev => prev.filter(c => c.status === 'error'))
+    }
+    prevLogCount.current = newCount
+  }, [initialStrengthLogs.length])
+
+  const handleSaveStrength = async (
+    exerciseId: string,
+    exerciseName: string,
+    sets: { weight: number; reps: number }[]
+  ) => {
+    const pendingId = crypto.randomUUID()
+
+    enqueuePendingOp({ id: pendingId, workoutId, type: 'strength', exerciseId, sets, timestamp: Date.now() })
+    setPendingCards(prev => [...prev, { pendingId, type: 'strength', exerciseId, name: exerciseName, sets, status: 'saving' }])
+
+    const result = await saveStrengthExercise(workoutId, exerciseId, sets)
+    if (result?.error) {
+      setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
+    } else {
+      dequeuePendingOp(pendingId)
+      // pending card removed by the useEffect above when new log arrives
+    }
+  }
+
+  const handleSaveSuperset = async (
+    matrix: Record<string, { weight: number; reps: number }[]>,
+    names: Record<string, string>
+  ) => {
+    const pendingId = crypto.randomUUID()
+
+    enqueuePendingOp({ id: pendingId, workoutId, type: 'superset', matrix, timestamp: Date.now() })
+    setPendingCards(prev => [...prev, { pendingId, type: 'superset', matrix, names, status: 'saving' }])
+
+    const result = await saveSupersetLog(workoutId, matrix)
+    if (result && 'error' in result) {
+      setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: (result as any).error } : c))
+    } else {
+      dequeuePendingOp(pendingId)
+    }
+  }
+
+  const retryPendingCard = async (card: PendingCard) => {
+    setPendingCards(prev => prev.map(c => c.pendingId === card.pendingId ? { ...c, status: 'saving', errorMessage: undefined } : c))
+    if (card.type === 'strength') {
+      const result = await saveStrengthExercise(workoutId, card.exerciseId, card.sets)
+      if (result?.error) {
+        setPendingCards(prev => prev.map(c => c.pendingId === card.pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
+      } else {
+        dequeuePendingOp(card.pendingId)
+      }
+    } else {
+      const result = await saveSupersetLog(workoutId, card.matrix)
+      if (result && 'error' in result) {
+        setPendingCards(prev => prev.map(c => c.pendingId === card.pendingId ? { ...c, status: 'error', errorMessage: (result as any).error } : c))
+      } else {
+        dequeuePendingOp(card.pendingId)
+      }
+    }
+  }
+
+  const dismissPendingCard = (pendingId: string) => {
+    dequeuePendingOp(pendingId)
+    setPendingCards(prev => prev.filter(c => c.pendingId !== pendingId))
+  }
+
+  const syncStaleOps = async () => {
+    for (const op of staleOps) {
+      if (op.type === 'strength' && op.exerciseId && op.sets) {
+        await saveStrengthExercise(op.workoutId, op.exerciseId, op.sets)
+      } else if (op.type === 'superset' && op.matrix) {
+        await saveSupersetLog(op.workoutId, op.matrix)
+      }
+      dequeuePendingOp(op.id)
+    }
+    setStaleOps([])
+  }
 
   const strengthCards: StrengthCard[] = initialStrengthLogs
     .filter(log => log.strength_sets && log.strength_sets.length > 0)
@@ -108,7 +205,7 @@ export function InteractiveCanvas({
     }
   }
 
-  const isCanvasEmpty = initialRunningLogs.length === 0 && strengthCards.length === 0
+  const isCanvasEmpty = initialRunningLogs.length === 0 && strengthCards.length === 0 && pendingCards.length === 0
 
   const handleDeleteCardio = (logId: string) => {
     if (window.confirm('Delete this cardio session?')) {
@@ -160,6 +257,19 @@ export function InteractiveCanvas({
   return (
     <div className={`space-y-6 transition-opacity duration-200 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
 
+      {/* 0. STALE-OP RECOVERY BANNER */}
+      {staleOps.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-amber-700">
+            ⚠️ {staleOps.length} unsaved {staleOps.length === 1 ? 'log' : 'logs'} from your last session
+          </p>
+          <div className="flex gap-3 flex-shrink-0">
+            <button onClick={syncStaleOps} className="text-xs font-bold text-amber-700 underline">Sync now</button>
+            <button onClick={() => { clearPendingOpsForWorkout(workoutId); setStaleOps([]) }} className="text-xs font-bold text-gray-400">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {/* 1. COMPLETED CARDIO */}
       {initialRunningLogs.length > 0 && (
         <div className="space-y-3">
@@ -194,8 +304,8 @@ export function InteractiveCanvas({
         </div>
       )}
 
-      {/* 2. COMPLETED LIFTS */}
-      {renderItems.length > 0 && (
+      {/* 2. COMPLETED LIFTS + PENDING */}
+      {(renderItems.length > 0 || pendingCards.length > 0) && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mt-6">Completed Lifts</h3>
 
@@ -278,6 +388,69 @@ export function InteractiveCanvas({
               </div>
             )
           })}
+
+          {/* ── Pending (optimistic) cards ── */}
+          {pendingCards.map(card => {
+            const isSaving = card.status === 'saving'
+            const isError = card.status === 'error'
+
+            if (card.type === 'strength') {
+              const maxW = Math.max(...card.sets.map(s => s.weight))
+              return (
+                <div key={card.pendingId} className={`px-4 py-4 rounded-xl border flex flex-col gap-1 relative transition-all ${isSaving ? 'bg-white border-blue-200 animate-pulse' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex justify-between items-center pr-2">
+                    <p className="font-bold text-gray-900 text-[15px]">{card.name}</p>
+                    <p className="font-bold text-gray-900">{maxW} <span className="text-xs font-normal text-gray-500">kg</span></p>
+                  </div>
+                  <p className="text-sm text-gray-500 font-medium">{card.sets.length} sets • {card.sets.map(s => s.reps).join('-')} reps</p>
+                  {isSaving && <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Saving…</p>}
+                  {isError && (
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-xs text-red-500 font-semibold flex-1">Failed to save — {card.errorMessage || 'network error'}</p>
+                      <button onClick={() => retryPendingCard(card)} className="text-xs font-bold text-blue-600 underline">Retry</button>
+                      <button onClick={() => dismissPendingCard(card.pendingId)} className="text-xs font-bold text-gray-400">Discard</button>
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            // superset pending card
+            const exerciseIds = Object.keys(card.matrix)
+            return (
+              <div key={card.pendingId} className={`border-2 rounded-2xl overflow-hidden transition-all ${isSaving ? 'border-blue-200 animate-pulse' : 'border-red-200'}`}>
+                <div className={`px-4 py-2 flex justify-between items-center border-b ${isSaving ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-100'}`}>
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">🔄 Superset</span>
+                  {isSaving && <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Saving…</span>}
+                  {isError && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => retryPendingCard(card)} className="text-xs font-bold text-blue-600 underline">Retry</button>
+                      <button onClick={() => dismissPendingCard(card.pendingId)} className="text-xs font-bold text-gray-400">Discard</button>
+                    </div>
+                  )}
+                </div>
+                <div className="bg-white divide-y divide-blue-50">
+                  {exerciseIds.map((exId, i) => {
+                    const sets = card.matrix[exId]
+                    const maxW = Math.max(...sets.map(s => s.weight))
+                    return (
+                      <div key={exId} className="px-4 py-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-400 w-4">{String.fromCharCode(65 + i)}</span>
+                            {card.names[exId] || 'Exercise'}
+                          </p>
+                          <p className="text-xs text-gray-500 font-medium ml-6">{sets.length} sets • {sets.map(s => s.reps).join('-')} reps</p>
+                        </div>
+                        <p className="font-bold text-gray-900 text-sm">{maxW} <span className="text-xs font-normal text-gray-500">kg</span></p>
+                      </div>
+                    )
+                  })}
+                </div>
+                {isError && <p className="text-xs text-red-500 font-semibold px-4 py-2 bg-red-50">Failed — {card.errorMessage || 'network error'}</p>}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -333,7 +506,7 @@ export function InteractiveCanvas({
       )}
 
       {activeModule === 'strength' && !editData && (
-        <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} />
+        <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} onSave={handleSaveStrength} />
       )}
 
       {activeModule === 'superset' && (
@@ -343,6 +516,7 @@ export function InteractiveCanvas({
           supersetTemplates={supersetTemplates}
           editData={editSupersetData ?? undefined}
           onCancel={closeForm}
+          onSave={editSupersetData ? undefined : handleSaveSuperset}
         />
       )}
 

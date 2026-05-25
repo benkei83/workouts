@@ -17,18 +17,21 @@ type Exercise = {
   lastSession?: LastSession | null
 }
 
-export default function StrengthForm({ 
-  workoutId, 
+export default function StrengthForm({
+  workoutId,
   exercises,
   onCancel,
+  onSave,
   initialSets = 5,
   initialReps = 5,
   initialWeight = 60,
-  editData 
-}: { 
-  workoutId: string, 
+  editData
+}: {
+  workoutId: string,
   exercises: Exercise[],
   onCancel: () => void,
+  /** When provided (new-exercise flow), the canvas owns the server call — form just hands off data and closes. */
+  onSave?: (exerciseId: string, exerciseName: string, sets: SetData[]) => void,
   initialSets?: number,
   initialReps?: number,
   initialWeight?: number,
@@ -130,18 +133,24 @@ export default function StrengthForm({
   }
 
   const handleSave = async () => {
+    // ── Optimistic path (new exercise, canvas owns the server call) ──
+    if (onSave && !editData) {
+      const exerciseName = exercises.find(e => e.id === selectedExercise)?.name || 'Exercise'
+      onSave(selectedExercise, exerciseName, sets)
+      onCancel()
+      return
+    }
+
+    // ── Standard path (edit flow) ──
     setIsSubmitting(true)
     if (editData) await deleteStrengthLog(editData.logId, workoutId)
-    
-    // Pass historical data back to the database to preserve ordering and superset linkage
     const result = await saveStrengthExercise(workoutId, selectedExercise, sets, {
       createdAt: editData?.createdAt,
-      supersetId: editData?.supersetId
+      supersetId: editData?.supersetId,
     })
-    
     setIsSubmitting(false)
     if (result?.error) alert(`Database Error: ${result.error}`)
-    else onCancel() 
+    else onCancel()
   }
 
   return (

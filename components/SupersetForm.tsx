@@ -46,12 +46,15 @@ export default function SupersetForm({
   supersetTemplates = [],
   editData,
   onCancel,
+  onSave,
 }: {
   workoutId: string
   exercises: Exercise[]
   supersetTemplates?: SupersetTemplate[]
   editData?: EditCard[]   // provided when editing an existing superset
   onCancel: () => void
+  /** When provided (new superset flow), the canvas owns the server call. */
+  onSave?: (matrix: Record<string, { weight: number; reps: number }[]>, names: Record<string, string>) => void
 }) {
   const isEditing = !!editData && editData.length > 0
 
@@ -129,6 +132,15 @@ export default function SupersetForm({
 
   // ── SAVE ──────────────────────────────────────────────────
   const handleSave = async () => {
+    // ── Optimistic path (new superset, canvas owns the server call) ──
+    if (onSave && !isEditing) {
+      const names: Record<string, string> = {}
+      activeIds.forEach(id => { names[id] = getExerciseName(id) })
+      onSave(matrix, names)
+      onCancel()
+      return
+    }
+
     setIsSubmitting(true)
 
     if (isEditing) {
@@ -145,6 +157,7 @@ export default function SupersetForm({
         onCancel()
       }
     } else {
+      // Fallback (no onSave prop — shouldn't happen in normal flow)
       const result = await saveSupersetLog(workoutId, matrix)
       setIsSubmitting(false)
       if (result && 'error' in result) {
