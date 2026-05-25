@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog } from '@/app/workout/actions'
 
+type LastSession = { date: string; sets: { weight: number; reps: number }[] }
 type Exercise = {
   id: string
   name: string
@@ -13,6 +14,7 @@ type Exercise = {
     target_sets?: number
     increment_step?: number
   } | null
+  lastSession?: LastSession | null
 }
 
 type SupersetTemplate = {
@@ -181,6 +183,8 @@ export default function SupersetForm({
     return ex?.increment_step || ex?.settings?.increment_step || 2.5
   }
 
+  const getLastSession = (id: string) => exercises.find(e => e.id === id)?.lastSession ?? null
+
   const numSets = matrix[activeIds[0]]?.length ?? targetSets
 
   return (
@@ -285,12 +289,21 @@ export default function SupersetForm({
               {activeIds.map((exId, exIndex) => {
                 const rowIncrement = getIncrement(exId)
                 const rowData = matrix[exId]?.[setIndex] || { weight: 0, reps: 0 }
+                const lastSession = getLastSession(exId)
+                const lastMax = lastSession ? Math.max(...lastSession.sets.map(s => s.weight)) : null
 
                 return (
                   <div key={exId} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
-                    <div className="text-xs font-bold text-white w-1/3 truncate pr-2">
-                      <span className="text-gray-500 mr-2">{String.fromCharCode(65 + exIndex)}</span>
-                      {getExerciseName(exId)}
+                    <div className="w-1/3 pr-2 min-w-0">
+                      <div className="text-xs font-bold text-white truncate">
+                        <span className="text-gray-500 mr-2">{String.fromCharCode(65 + exIndex)}</span>
+                        {getExerciseName(exId)}
+                      </div>
+                      {lastMax !== null && (
+                        <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
+                          Last: {lastMax}kg
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">

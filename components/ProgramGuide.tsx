@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { saveStrengthExercise, saveSupersetLog, advanceRotation } from '@/app/workout/actions'
 
 type SetData = { weight: number; reps: number }
-type Exercise = { id: string; name: string; settings?: any; increment_step?: number }
+type LastSession = { date: string; sets: { weight: number; reps: number }[] }
+type Exercise = { id: string; name: string; settings?: any; increment_step?: number; lastSession?: LastSession | null }
 
 type SupersetTemplateExercise = {
   sort_order: number
@@ -275,6 +276,17 @@ export default function ProgramGuide({
         {/* ── Single exercise sets ── */}
         {!isSuperset && (
           <>
+            {currentExercise?.lastSession && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 -mt-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last</span>
+                {currentExercise.lastSession.sets.map((s, i) => (
+                  <span key={i} className="text-xs font-semibold text-gray-500">{s.weight}kg × {s.reps}</span>
+                ))}
+                <span className="text-[10px] text-gray-300 ml-auto">
+                  {new Date(currentExercise.lastSession.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              </div>
+            )}
             <div className="space-y-2">
               {currentSets.map((set, i) => (
                 <div key={i} className="flex items-center justify-between gap-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative group">
@@ -334,11 +346,19 @@ export default function ProgramGuide({
                     const ex = exercises.find(e => e.id === te.exercise_id)
                     const exIncrement = ex?.increment_step || ex?.settings?.increment_step || 2.5
                     const rowData = currentMatrix[te.exercise_id]?.[setIndex] || { weight: 0, reps: 0 }
+                    const lastMax = ex?.lastSession ? Math.max(...ex.lastSession.sets.map(s => s.weight)) : null
                     return (
                       <div key={te.exercise_id} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
-                        <div className="text-xs font-bold text-white w-1/3 truncate pr-2">
-                          <span className="text-gray-500 mr-1">{String.fromCharCode(65 + exIdx)}</span>
-                          {te.exercises?.name || 'Exercise'}
+                        <div className="w-1/3 pr-2 min-w-0">
+                          <div className="text-xs font-bold text-white truncate">
+                            <span className="text-gray-500 mr-1">{String.fromCharCode(65 + exIdx)}</span>
+                            {te.exercises?.name || 'Exercise'}
+                          </div>
+                          {lastMax !== null && (
+                            <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
+                              Last: {lastMax}kg
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">

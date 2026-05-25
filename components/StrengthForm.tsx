@@ -5,7 +5,14 @@ import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateEx
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 
 type SetData = { weight: number, reps: number }
-type Exercise = { id: string, name: string, increment_step?: number, settings?: any }
+type LastSession = { date: string; sets: { weight: number; reps: number }[] }
+type Exercise = {
+  id: string
+  name: string
+  increment_step?: number
+  settings?: any
+  lastSession?: LastSession | null
+}
 
 export default function StrengthForm({ 
   workoutId, 
@@ -189,6 +196,19 @@ export default function StrengthForm({
                 {isSubmitting ? 'Saving...' : 'Save Settings'}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* Last session reference */}
+        {uiMode === 'select' && !editData && activeExerciseData?.lastSession && (
+          <div className="mt-2 px-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last</span>
+            {activeExerciseData.lastSession.sets.map((s, i) => (
+              <span key={i} className="text-xs font-semibold text-gray-500">{s.weight}kg × {s.reps}</span>
+            ))}
+            <span className="text-[10px] text-gray-300 ml-auto">
+              {new Date(activeExerciseData.lastSession.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </span>
           </div>
         )}
       </div>

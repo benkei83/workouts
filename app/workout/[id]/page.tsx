@@ -110,6 +110,61 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     .eq('user_id', user.id)
     .order('name')
 
+  // 7. Build per-exercise "last session" map from the 20 most recent completed workouts
+  const { data: recentWorkouts } = await supabase
+    .from('workouts')
+    .select('id, created_at')
+    .eq('user_id', user.id)
+    .not('total_duration_mins', 'is', null)
+    .neq('id', id)
+    .order('created_at', { ascending: false })
+    .limit(20)
+
+  const recentWorkoutIds = (recentWorkouts || []).map(w => w.id)
+  const lastSessionMap: Record<string, { date: string; sets: { weight: number; reps: number }[] }> = {}
+
+  if (recentWorkoutIds.length > 0) {
+    const { data: recentLogs } = await supabase
+      .from('strength_logs')
+      .select('workout_id, strength_sets(exercise_id, actual_weight, actual_reps, set_number)')
+      .in('workout_id', recentWorkoutIds)
+
+    // Walk workouts newest-first; record the FIRST occurrence of each exercise
+    for (const w of (recentWorkouts || [])) {
+      const logsForWorkout = (recentLogs || []).filter(l => l.workout_id === w.id)
+      const seenExIds = new Set<string>()
+
+      for (const log of logsForWorkout) {
+        for (const s of ((log.strength_sets as any[]) || [])) {
+          if (s.exercise_id && !seenExIds.has(s.exercise_id)) {
+            seenExIds.add(s.exercise_id)
+          }
+        }
+      }
+
+      for (const exId of seenExIds) {
+        if (!lastSessionMap[exId]) {
+          const allSets = logsForWorkout
+            .flatMap(l => ((l.strength_sets as any[]) || []).filter((s: any) => s.exercise_id === exId))
+            .sort((a: any, b: any) => a.set_number - b.set_number)
+          lastSessionMap[exId] = {
+            date: w.created_at,
+            sets: allSets.map((s: any) => ({
+              weight: s.actual_weight ?? 0,
+              reps: s.actual_reps ?? 0,
+            })),
+          }
+        }
+      }
+    }
+  }
+
+  // Merge lastSession into allExercises
+  const allExercisesWithHistory = allExercises.map(ex => ({
+    ...ex,
+    lastSession: lastSessionMap[ex.id] ?? null,
+  }))
+
   const dateObj = new Date(workout.created_at)
   const timeString = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   const dateString = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -150,7 +205,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           workoutId={workout.id}
           initialRunningLogs={workout.running_logs || []}
           initialStrengthLogs={workout.strength_logs || []}
-          exercises={allExercises}
+          exercises={allExercisesWithHistory}
           programs={(programs as any) || []}
           activeProgram={activeProgram || null}
           supersetTemplates={(supersetTemplates as any) || []}
