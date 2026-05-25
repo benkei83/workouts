@@ -5,6 +5,7 @@ type Settings = {
   current_weight?: number
   increment_step?: number
   progression_rate?: number
+  min_successes?: number
   max_failures?: number
   deload_multiplier?: number
 }
@@ -43,9 +44,13 @@ export default function ExerciseSettingsFields({ settings }: { settings?: Settin
 
       <div className="col-span-2 border-t border-gray-200 my-1 pt-2"></div>
 
-      <div className="col-span-2">
-        <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Weight Step</label>
+      <div>
+        <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Step</label>
         <input type="number" step="0.5" name="progression_rate" defaultValue={settings?.progression_rate || 2.5} className="w-full bg-white border border-green-200 rounded-lg px-3 py-2 font-bold mt-1" />
+      </div>
+      <div>
+        <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Min Successes</label>
+        <input type="number" min="1" name="min_successes" defaultValue={settings?.min_successes || 1} className="w-full bg-white border border-green-200 rounded-lg px-3 py-2 font-bold mt-1" />
       </div>
       <div>
         <label className="block text-[10px] font-bold text-gray-500 uppercase text-red-500">Max Failures</label>

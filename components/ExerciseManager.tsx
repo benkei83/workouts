@@ -39,9 +39,11 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
         increment: parseFloat(formData.get('increment') as string) || 2.5,
         progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
         protocol: formData.get('protocol') as string,
+        min_successes: parseInt(formData.get('min_successes') as string) || 1,
         max_failures: parseInt(formData.get('max_failures') as string) || 3,
         deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
-        current_failures: editingExercise.settings?.current_failures || 0
+        current_failures: editingExercise.settings?.current_failures || 0,
+        current_successes: editingExercise.settings?.current_successes || 0,
       })
       setEditingExercise(null)
     })

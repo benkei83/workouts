@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
-import { getDeloadStatus } from '@/lib/deload'
+import SuccessBadge from '@/components/SuccessBadge'
+import { getDeloadStatus, getSuccessStatus } from '@/lib/deload'
 
 type SetData = { weight: number, reps: number }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
@@ -97,9 +98,11 @@ export default function StrengthForm({
       increment: parseFloat(formData.get('increment') as string) || 2.5,
       progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
       protocol: formData.get('protocol') as string,
+      min_successes: parseInt(formData.get('min_successes') as string) || 1,
       max_failures: parseInt(formData.get('max_failures') as string) || 3,
       deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
-      current_failures: activeExerciseData?.settings?.current_failures || 0
+      current_failures: activeExerciseData?.settings?.current_failures || 0,
+      current_successes: activeExerciseData?.settings?.current_successes || 0,
     })
     setIsSubmitting(false)
     setUiMode('select')
@@ -200,6 +203,12 @@ export default function StrengthForm({
             </form>
           </div>
         )}
+
+        {/* Success streak */}
+        {uiMode === 'select' && (() => {
+          const ss = getSuccessStatus(activeExerciseData?.settings)
+          return ss ? <SuccessBadge status={ss} /> : null
+        })()}
 
         {/* Deload warning */}
         {uiMode === 'select' && (() => {

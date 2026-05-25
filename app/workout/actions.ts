@@ -117,6 +117,7 @@ export async function saveStrengthExercise(
 
   if (setting && setting.protocol && setting.protocol !== 'manual') {
     let newFailures = Number(setting.current_failures) || 0
+    let newSuccesses = Number(setting.current_successes) || 0
     let newWeight = Number(setting.current_weight) || 0
     let changed = false
 
@@ -124,18 +125,24 @@ export async function saveStrengthExercise(
     const targetReps = Number(setting.target_reps) || 5
     const progRate = Number(setting.progression_rate) || 2.5
     const maxFails = Number(setting.max_failures) || 3
+    const minSuccesses = Number(setting.min_successes) || 1
     const deloadMult = Number(setting.deload_multiplier) || 2.0
 
     const completedSetsCount = sets.length
     const allSetsHitTarget = sets.every(s => Number(s.reps) >= targetReps)
 
-    if (setting.protocol === 'linear') { 
+    if (setting.protocol === 'linear') {
       // 5x5 STYLE
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
-        newWeight += progRate
+        newSuccesses += 1
         newFailures = 0
+        if (newSuccesses >= minSuccesses) {
+          newWeight += progRate
+          newSuccesses = 0
+        }
         changed = true
       } else {
+        newSuccesses = 0
         newFailures += 1
         changed = true
         if (newFailures >= maxFails) {
@@ -143,21 +150,28 @@ export async function saveStrengthExercise(
           newFailures = 0
         }
       }
-    } else if (setting.protocol === 'double') { 
+    } else if (setting.protocol === 'double') {
       // 3x12 STYLE (Lower bound is Target - 4)
-      const lowerBound = Math.max(1, targetReps - 4) 
+      const lowerBound = Math.max(1, targetReps - 4)
       const allSetsHitMaintain = sets.every(s => Number(s.reps) >= lowerBound)
 
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
-        newWeight += progRate
+        newSuccesses += 1
         newFailures = 0
+        if (newSuccesses >= minSuccesses) {
+          newWeight += progRate
+          newSuccesses = 0
+        }
         changed = true
       } else if (completedSetsCount >= targetSets && allSetsHitMaintain) {
-        if (newFailures !== 0) {
-          newFailures = 0 
+        // Maintenance: forgive failure streak, reset success streak (not a full success)
+        if (newFailures !== 0 || newSuccesses !== 0) {
+          newFailures = 0
+          newSuccesses = 0
           changed = true
         }
       } else {
+        newSuccesses = 0
         newFailures += 1
         changed = true
         if (newFailures >= maxFails) {
@@ -184,6 +198,8 @@ export async function saveStrengthExercise(
         protocol: setting.protocol,
         current_failures: newFailures,
         max_failures: setting.max_failures,
+        min_successes: setting.min_successes ?? 1,
+        current_successes: newSuccesses,
         deload_multiplier: setting.deload_multiplier,
         is_active: true
       })
@@ -370,6 +386,8 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
     protocol: settings.protocol || 'manual',
     current_failures: settings.current_failures || 0,
     max_failures: settings.max_failures || 3,
+    min_successes: settings.min_successes || 1,
+    current_successes: settings.current_successes || 0,
     deload_multiplier: settings.deload_multiplier || 2.0,
     is_active: true
   })
