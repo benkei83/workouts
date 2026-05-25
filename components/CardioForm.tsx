@@ -24,6 +24,11 @@ export default function CardioForm({
   const [sessionType, setSessionType] = useState<'interval' | 'distance'>(editData?.session_type || 'interval')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Distance run controlled state (for steppers)
+  const [distMins, setDistMins]       = useState<number>(editData ? Math.round(editData.duration_seconds / 60) : 30)
+  const [distKm, setDistKm]           = useState<number>(editData?.distance_km ?? 5.0)
+  const [distIncline, setDistIncline] = useState<number>(editData?.average_incline ?? 1.0)
+
   // Parse existing legs if editing, otherwise use the 4x4 default
   const initialLegs = editData?.running_legs?.length > 0 
     ? editData.running_legs.map((leg: any) => ({
@@ -296,19 +301,57 @@ export default function CardioForm({
         )}
 
         {sessionType === 'distance' && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time (mins)</label>
-              <input type="number" name="duration" defaultValue={editData ? Math.round(editData.duration_seconds / 60) : ''} placeholder="45" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-black outline-none" />
+          <div className="space-y-3">
+            {/* hidden fields for form submission */}
+            <input type="hidden" name="duration"  value={distMins} />
+            <input type="hidden" name="distance"  value={distKm.toFixed(2)} />
+            {environment === 'indoor' && <input type="hidden" name="incline" value={distIncline} />}
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Time */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time (mins)</label>
+                <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => setDistMins(m => Math.max(1, m - 1))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <input
+                    type="number"
+                    value={distMins}
+                    onChange={e => setDistMins(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
+                  />
+                  <button type="button" onClick={() => setDistMins(m => m + 1)} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                </div>
+              </div>
+
+              {/* Distance */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Dist (km)</label>
+                <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => setDistKm(k => parseFloat(Math.max(0, k - 0.1).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <input
+                    type="number"
+                    value={distKm}
+                    onChange={e => setDistKm(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
+                  />
+                  <button type="button" onClick={() => setDistKm(k => parseFloat((k + 0.1).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Dist (km)</label>
-              <input type="number" step="0.1" name="distance" defaultValue={editData?.distance_km || ''} placeholder="10.0" required className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-black outline-none" />
-            </div>
+
             {environment === 'indoor' && (
-              <div className="col-span-2">
+              <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Avg Incline (%)</label>
-                <input type="number" step="0.5" name="incline" defaultValue={editData?.average_incline || ''} placeholder="1.0" className="w-full bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 text-lg font-bold focus:ring-2 focus:ring-black outline-none" />
+                <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => setDistIncline(i => parseFloat(Math.max(0, i - 0.5).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <input
+                    type="number"
+                    value={distIncline}
+                    onChange={e => setDistIncline(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
+                  />
+                  <button type="button" onClick={() => setDistIncline(i => parseFloat((i + 0.5).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                </div>
               </div>
             )}
           </div>
