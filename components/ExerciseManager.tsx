@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createCustomExercise, updateExerciseSettings, deleteExercise } from '@/app/workout/actions' // Added delete import
+import { createCustomExercise, updateExerciseSettings, deleteExercise } from '@/app/workout/actions'
+import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 
 type Exercise = {
   id: string
@@ -35,7 +36,12 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
         sets: parseInt(formData.get('sets') as string) || 5,
         reps: parseInt(formData.get('reps') as string) || 5,
         weight: parseFloat(formData.get('weight') as string) || 0,
-        increment: parseFloat(formData.get('increment') as string) || 2.5
+        increment: parseFloat(formData.get('increment') as string) || 2.5,
+        progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
+        protocol: formData.get('protocol') as string,
+        max_failures: parseInt(formData.get('max_failures') as string) || 3,
+        deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+        current_failures: editingExercise.settings?.current_failures || 0
       })
       setEditingExercise(null)
     })
@@ -128,27 +134,10 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
               <button onClick={() => setEditingExercise(null)} className="text-gray-400 font-bold p-2">✕</button>
             </div>
             
-            <form action={handleUpdateSettings} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Default Sets</label>
-                  <input type="number" name="sets" required defaultValue={editingExercise.settings?.target_sets || 5} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Default Reps</label>
-                  <input type="number" name="reps" required defaultValue={editingExercise.settings?.target_reps || 5} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Target Weight (kg)</label>
-                  <input type="number" step="0.5" name="weight" required defaultValue={editingExercise.settings?.current_weight || 60} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Progression Step</label>
-                  <input type="number" step="0.5" name="increment" required defaultValue={editingExercise.settings?.increment_step || 2.5} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
-                </div>
-              </div>
-              <button type="submit" disabled={isPending} className="w-full bg-black text-white font-bold rounded-xl py-4 mt-2 disabled:opacity-50">
-                {isPending ? 'Updating...' : 'Save Targets'}
+            <form action={handleUpdateSettings}>
+              <ExerciseSettingsFields settings={editingExercise.settings} />
+              <button type="submit" disabled={isPending} className="w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
+                {isPending ? 'Updating...' : 'Save Settings'}
               </button>
             </form>
           </div>

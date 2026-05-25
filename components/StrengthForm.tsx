@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
+import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 
 type SetData = { weight: number, reps: number }
 type Exercise = { id: string, name: string, increment_step?: number, settings?: any }
@@ -182,52 +183,9 @@ export default function StrengthForm({
               <h4 className="font-bold text-sm text-gray-900">Edit Settings: {activeExerciseData?.name}</h4>
               <button type="button" onClick={() => setUiMode('select')} className="text-gray-400 font-bold text-sm">Cancel</button>
             </div>
-            <form action={handleInlineSettingsSave} className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Progression Protocol</label>
-                <select name="protocol" defaultValue={activeExerciseData?.settings?.protocol || 'manual'} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1 text-sm outline-none focus:border-black">
-                  <option value="manual">Manual (No Auto-Progression)</option>
-                  <option value="linear">Linear (e.g., 5x5)</option>
-                  <option value="double">Double Progression (e.g., 3x8-12)</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Sets</label>
-                <input type="number" name="sets" defaultValue={activeExerciseData?.settings?.target_sets || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Reps</label>
-                <input type="number" name="reps" defaultValue={activeExerciseData?.settings?.target_reps || 5} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              
-              <div className="col-span-2 border-t border-gray-200 my-1 pt-2"></div>
-              
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase">Target Weight</label>
-                <input type="number" step="0.5" name="weight" defaultValue={activeExerciseData?.settings?.current_weight || 60} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase text-blue-500">UI Increment (+/-)</label>
-                <input type="number" step="0.5" name="increment" defaultValue={activeExerciseData?.settings?.increment_step || 2.5} className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              
-              <div className="col-span-2 border-t border-gray-200 my-1 pt-2"></div>
-
-              <div className="col-span-2">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase text-green-500">Auto-Progression Weight Step</label>
-                <input type="number" step="0.5" name="progression_rate" defaultValue={activeExerciseData?.settings?.progression_rate || 2.5} className="w-full bg-white border border-green-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase text-red-500">Max Failures</label>
-                <input type="number" name="max_failures" defaultValue={activeExerciseData?.settings?.max_failures || 3} className="w-full bg-white border border-red-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase text-red-500">Deload Multiplier</label>
-                <input type="number" step="0.5" name="deload_multiplier" defaultValue={activeExerciseData?.settings?.deload_multiplier || 2.0} className="w-full bg-white border border-red-200 rounded-lg px-3 py-2 font-bold mt-1" />
-              </div>
-
-              <button type="submit" disabled={isSubmitting} className="col-span-2 bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all">
+            <form action={handleInlineSettingsSave}>
+              <ExerciseSettingsFields settings={activeExerciseData?.settings} />
+              <button type="submit" disabled={isSubmitting} className="col-span-2 w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all">
                 {isSubmitting ? 'Saving...' : 'Save Settings'}
               </button>
             </form>
