@@ -68,7 +68,7 @@ async function ProgramDataLoader() {
 
   return (
     <ProgramManager
-      initialPrograms={programs || []}
+      initialPrograms={(programs as any) || []}
       exercises={exercises || []}
       supersetTemplates={supersetTemplates || []}
       userId={user.id}

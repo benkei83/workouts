@@ -151,9 +151,9 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           initialRunningLogs={workout.running_logs || []}
           initialStrengthLogs={workout.strength_logs || []}
           exercises={allExercises}
-          programs={programs || []}
+          programs={(programs as any) || []}
           activeProgram={activeProgram || null}
-          supersetTemplates={supersetTemplates || []}
+          supersetTemplates={(supersetTemplates as any) || []}
         />
       </div>
     </>
