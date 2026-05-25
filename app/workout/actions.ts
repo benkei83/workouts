@@ -394,6 +394,29 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
 // PROGRAM ACTIONS
 // ============================================================
 
+export async function fetchProgramById(id: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('programs')
+    .select(`
+      *,
+      program_workouts (
+        *,
+        program_exercises (
+          *,
+          exercises ( id, name )
+        )
+      )
+    `)
+    .eq('id', id)
+    .single()
+
+  return data || null
+}
+
 export async function fetchPrograms() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -425,14 +448,13 @@ export async function createProgram(formData: FormData) {
   const description = (formData.get('description') as string) || null
   const split = parseInt(formData.get('split') as string) || 1
 
-  // Note: programs table needs a user_id column (migration) for ownership — inserting without for now
   const { data: program, error } = await supabase
     .from('programs')
-    .insert({ name, description })
+    .insert({ name, description, user_id: user.id })
     .select('id')
     .single()
 
-  if (error || !program) return { error: 'Failed to create program' }
+  if (error || !program) return { error: error?.message || 'Failed to create program' }
 
   const dayNames: Record<number, string[]> = {
     1: ['Workout A'],
@@ -447,7 +469,8 @@ export async function createProgram(formData: FormData) {
     rotation_order: i + 1,
   }))
 
-  await supabase.from('program_workouts').insert(workoutDays)
+  const { error: daysError } = await supabase.from('program_workouts').insert(workoutDays)
+  if (daysError) return { error: `Created program but failed to create workout days: ${daysError.message}` }
 
   revalidatePath('/programs')
   return { success: true, id: program.id }
@@ -466,6 +489,7 @@ export async function updateProgram(formData: FormData) {
     .from('programs')
     .update({ name, description })
     .eq('id', id)
+    .eq('user_id', user.id)
 
   if (error) return { error: 'Failed to update program' }
   revalidatePath('/programs')
@@ -481,6 +505,7 @@ export async function deleteProgram(id: string) {
     .from('programs')
     .delete()
     .eq('id', id)
+    .eq('user_id', user.id)
 
   if (error) return { error: 'Failed to delete program' }
   revalidatePath('/programs')

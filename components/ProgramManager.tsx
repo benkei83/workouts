@@ -7,6 +7,7 @@ import {
   deleteProgram,
   addProgramExercise,
   removeProgramExercise,
+  fetchProgramById,
 } from '@/app/workout/actions'
 
 type Exercise = { id: string; name: string }
@@ -35,21 +36,27 @@ export default function ProgramManager({
   const [editingProgram, setEditingProgram] = useState<Program | null>(null)
   const [activeDay, setActiveDay] = useState(0)
   const [isPending, startTransition] = useTransition()
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false)
 
   const handleCreate = (formData: FormData) => {
     startTransition(async () => {
       const res = await createProgram(formData)
-      if (res?.success) {
-        // Refresh by reloading — simpler than maintaining optimistic state for nested data
-        window.location.reload()
+      if (res?.error) {
+        alert(`Error: ${res.error}`)
+        return
       }
       setIsCreateOpen(false)
+      window.location.reload()
     })
   }
 
   const handleUpdate = (formData: FormData) => {
     startTransition(async () => {
-      await updateProgram(formData)
+      const res = await updateProgram(formData)
+      if (res?.error) {
+        alert(`Error: ${res.error}`)
+        return
+      }
       setEditingProgram(null)
       window.location.reload()
     })
@@ -65,21 +72,33 @@ export default function ProgramManager({
 
   const handleAddExercise = (programWorkoutId: string, exerciseId: string, currentCount: number) => {
     startTransition(async () => {
-      await addProgramExercise(programWorkoutId, exerciseId, currentCount + 1)
-      window.location.reload()
+      const res = await addProgramExercise(programWorkoutId, exerciseId, currentCount + 1)
+      if (res?.error) { alert(`Error: ${res.error}`); return }
+      // Refresh just the editing modal data without a full page reload
+      if (editingProgram) {
+        const fresh = await fetchProgramById(editingProgram.id)
+        if (fresh) setEditingProgram(fresh as Program)
+      }
     })
   }
 
   const handleRemoveExercise = (programExerciseId: string) => {
     startTransition(async () => {
       await removeProgramExercise(programExerciseId)
-      window.location.reload()
+      if (editingProgram) {
+        const fresh = await fetchProgramById(editingProgram.id)
+        if (fresh) setEditingProgram(fresh as Program)
+      }
     })
   }
 
-  const openEdit = (program: Program) => {
-    setEditingProgram(program)
+  const openEdit = async (program: Program) => {
     setActiveDay(0)
+    setIsLoadingEdit(true)
+    setEditingProgram(program) // open modal immediately with what we have
+    const fresh = await fetchProgramById(program.id)
+    if (fresh) setEditingProgram(fresh as Program)
+    setIsLoadingEdit(false)
   }
 
   return (
@@ -196,6 +215,9 @@ export default function ProgramManager({
             </div>
 
             <div className="overflow-y-auto flex-1 p-6 space-y-5">
+              {isLoadingEdit && (
+                <p className="text-sm text-gray-400 text-center animate-pulse py-2">Loading program data...</p>
+              )}
               {/* Name / description */}
               {(
                 <form action={handleUpdate} className="space-y-3">
@@ -243,6 +265,9 @@ export default function ProgramManager({
               )}
 
               {/* Exercise list for active day */}
+              {!isLoadingEdit && (editingProgram.program_workouts || []).length === 0 && (
+                <p className="text-sm text-red-400 text-center py-2">Could not load workout days. Try closing and reopening.</p>
+              )}
               {(editingProgram.program_workouts || [])
                 .sort((a, b) => a.rotation_order - b.rotation_order)
                 .map((pw, i) => {
