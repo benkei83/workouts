@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog } from '@/app/workout/actions'
+import DeloadBadge from '@/components/DeloadBadge'
+import { getDeloadStatus } from '@/lib/deload'
 
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
 type Exercise = {
@@ -291,6 +293,7 @@ export default function SupersetForm({
                 const rowData = matrix[exId]?.[setIndex] || { weight: 0, reps: 0 }
                 const lastSession = getLastSession(exId)
                 const lastMax = lastSession ? Math.max(...lastSession.sets.map(s => s.weight)) : null
+                const deloadStatus = getDeloadStatus(exercises.find(e => e.id === exId)?.settings)
 
                 return (
                   <div key={exId} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
@@ -304,6 +307,7 @@ export default function SupersetForm({
                           Last: {lastMax}kg
                         </div>
                       )}
+                      {deloadStatus && <DeloadBadge status={deloadStatus} compact />}
                     </div>
 
                     <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">

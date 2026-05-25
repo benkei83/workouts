@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { saveStrengthExercise, saveSupersetLog, advanceRotation } from '@/app/workout/actions'
+import DeloadBadge from '@/components/DeloadBadge'
+import { getDeloadStatus } from '@/lib/deload'
 
 type SetData = { weight: number; reps: number }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
@@ -287,6 +289,10 @@ export default function ProgramGuide({
                 </span>
               </div>
             )}
+            {(() => {
+              const ds = getDeloadStatus(currentExercise?.settings)
+              return ds ? <DeloadBadge status={ds} /> : null
+            })()}
             <div className="space-y-2">
               {currentSets.map((set, i) => (
                 <div key={i} className="flex items-center justify-between gap-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative group">
@@ -347,6 +353,7 @@ export default function ProgramGuide({
                     const exIncrement = ex?.increment_step || ex?.settings?.increment_step || 2.5
                     const rowData = currentMatrix[te.exercise_id]?.[setIndex] || { weight: 0, reps: 0 }
                     const lastMax = ex?.lastSession ? Math.max(...ex.lastSession.sets.map(s => s.weight)) : null
+                    const exDeloadStatus = getDeloadStatus(ex?.settings)
                     return (
                       <div key={te.exercise_id} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
                         <div className="w-1/3 pr-2 min-w-0">
@@ -359,6 +366,7 @@ export default function ProgramGuide({
                               Last: {lastMax}kg
                             </div>
                           )}
+                          {exDeloadStatus && <DeloadBadge status={exDeloadStatus} compact />}
                         </div>
 
                         <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
+import DeloadBadge from '@/components/DeloadBadge'
+import { getDeloadStatus } from '@/lib/deload'
 
 type SetData = { weight: number, reps: number }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
@@ -198,6 +200,12 @@ export default function StrengthForm({
             </form>
           </div>
         )}
+
+        {/* Deload warning */}
+        {uiMode === 'select' && (() => {
+          const ds = getDeloadStatus(activeExerciseData?.settings)
+          return ds ? <DeloadBadge status={ds} /> : null
+        })()}
 
         {/* Last session reference */}
         {uiMode === 'select' && !editData && activeExerciseData?.lastSession && (
