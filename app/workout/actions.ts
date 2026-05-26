@@ -416,9 +416,9 @@ export async function fetchAllWgerExercises(): Promise<
   const seen = new Set<string>()
 
   while (url) {
-    const res = await fetch(url, { cache: 'force-cache' })
+    const res: Response = await fetch(url, { cache: 'force-cache' })
     if (!res.ok) break
-    const page = await res.json()
+    const page = await res.json() as { next: string | null; results: any[] }
 
     for (const ex of page.results as any[]) {
       const enTrans = (ex.translations ?? []).find((t: any) => t.language === 2)
@@ -437,7 +437,7 @@ export async function fetchAllWgerExercises(): Promise<
       })
     }
 
-    url = page.next ?? null
+    url = page.next ?? null  // page is typed so url stays string | null
   }
 
   return results.sort((a, b) => a.name.localeCompare(b.name))
