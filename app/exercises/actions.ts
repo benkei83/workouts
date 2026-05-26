@@ -40,7 +40,7 @@ export async function fetchExerciseHistory(
   // 3. Sets for this exercise in those logs
   const { data: sets } = await supabase
     .from('strength_sets')
-    .select('strength_log_id, actual_weight, actual_reps, set_number')
+    .select('strength_log_id, actual_weight, actual_reps, set_number, rpe')
     .in('strength_log_id', logIds)
     .eq('exercise_id', exerciseId)
     .order('set_number')
@@ -55,7 +55,7 @@ export async function fetchExerciseHistory(
   }
 
   // Group sets by workout (one exercise may appear in multiple logs of the same workout)
-  const workoutSets = new Map<string, { date: string; rawSets: { weight: number; reps: number }[] }>()
+  const workoutSets = new Map<string, { date: string; rawSets: { weight: number; reps: number; rpe: number | null }[] }>()
   for (const set of sets) {
     const w = logToWorkout.get(set.strength_log_id)
     if (!w) continue
@@ -65,6 +65,7 @@ export async function fetchExerciseHistory(
     workoutSets.get(w.id)!.rawSets.push({
       weight: Number(set.actual_weight) || 0,
       reps: Number(set.actual_reps) || 0,
+      rpe: (set as any).rpe ?? null,
     })
   }
 
@@ -78,10 +79,13 @@ export async function fetchExerciseHistory(
     const totalVolume = rawSets.reduce((s, set) => s + set.weight * set.reps, 0)
     const avgReps = rawSets.reduce((s, set) => s + set.reps, 0) / rawSets.length
 
-    // Find the set that produced the best estimated 1RM
+    // Only "clean" sets (RPE ≤ 10 or unrecorded) count toward records
+    const cleanSets = rawSets.filter(s => s.rpe == null || s.rpe <= 10)
+
+    // Find the set that produced the best estimated 1RM (clean sets only)
     let best1rmSet: { weight: number; reps: number; estimatedOneRM: number } | undefined
     let topOrm = 0
-    for (const s of rawSets) {
+    for (const s of cleanSets) {
       const orm = s.reps <= 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30))
       if (orm > topOrm) {
         topOrm = orm
@@ -89,10 +93,10 @@ export async function fetchExerciseHistory(
       }
     }
 
-    // Find the set that produced the best single-set volume
+    // Find the set that produced the best single-set volume (clean sets only)
     let bestVolumeSet: { weight: number; reps: number; volume: number } | undefined
     let topVol = 0
-    for (const s of rawSets) {
+    for (const s of cleanSets) {
       const vol = s.weight * s.reps
       if (vol > topVol) {
         topVol = vol

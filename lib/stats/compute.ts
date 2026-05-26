@@ -46,7 +46,13 @@ export type RawStrengthSet = {
   exercise_id: string
   actual_weight: number | null
   actual_reps: number | null
+  rpe?: number | null           // optional; >10 means the set was assisted/cheated
   exercises?: { name: string } | null
+}
+
+/** True when the set should be excluded from records and progression. */
+export function isCheatedSet(rpe: number | null | undefined): boolean {
+  return rpe != null && Number(rpe) > 10
 }
 
 export type RawRunningLog = {
@@ -304,11 +310,12 @@ export function computeSessionBestSets(
   exercises: ExerciseMeta[],
   exerciseSettingsMap: Record<string, { target_reps?: number | null } | null>,
 ): SessionBestSet[] {
-  // Collect all valid sets grouped by exercise
+  // Collect all valid sets grouped by exercise (cheated sets excluded)
   const exSets = new Map<string, { weight: number; reps: number }[]>()
   for (const log of strengthLogs) {
     for (const s of log.strength_sets || []) {
       if (!s.exercise_id) continue
+      if (isCheatedSet(s.rpe)) continue   // RPE > 10 → excluded from records
       const w = Number(s.actual_weight) || 0
       const r = Number(s.actual_reps) || 0
       if (w <= 0 || r <= 0) continue
@@ -372,7 +379,7 @@ export type HistoricalBest = {
  * for each exercise. Use recentLogs (already fetched in page.tsx).
  */
 export function computeHistoricalBestsFromLogs(
-  logs: { strength_sets: { exercise_id: string; actual_weight: number | null; actual_reps: number | null }[] }[]
+  logs: { strength_sets: { exercise_id: string; actual_weight: number | null; actual_reps: number | null; rpe?: number | null }[] }[]
 ): Record<string, HistoricalBest> {
   const bests: Record<string, HistoricalBest> = {}
 
@@ -380,6 +387,7 @@ export function computeHistoricalBestsFromLogs(
     for (const s of log.strength_sets || []) {
       const exId = s.exercise_id
       if (!exId) continue
+      if (isCheatedSet(s.rpe)) continue   // RPE > 10 → excluded from records
       const w = Number(s.actual_weight) || 0
       const r = Number(s.actual_reps) || 0
       if (w <= 0 || r <= 0) continue

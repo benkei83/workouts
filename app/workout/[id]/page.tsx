@@ -133,7 +133,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
   if (recentWorkoutIds.length > 0) {
     const { data: fetchedLogs } = await supabase
       .from('strength_logs')
-      .select('workout_id, strength_sets(exercise_id, actual_weight, actual_reps, set_number)')
+      .select('workout_id, strength_sets(exercise_id, actual_weight, actual_reps, rpe, set_number)')
       .in('workout_id', recentWorkoutIds)
     recentLogs = (fetchedLogs || []) as typeof recentLogs
 

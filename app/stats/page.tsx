@@ -104,7 +104,7 @@ async function StatsLoader() {
       id, created_at, total_duration_mins,
       strength_logs(
         id,
-        strength_sets( exercise_id, actual_weight, actual_reps, exercises(id, name) )
+        strength_sets( exercise_id, actual_weight, actual_reps, rpe, exercises(id, name) )
       ),
       running_logs( id, distance_km, duration_seconds, average_speed, session_type, environment )
     `)
@@ -162,8 +162,9 @@ async function StatsLoader() {
           volume: (prev?.volume ?? 0) + vol,
         })
 
-        // Track all-time best 1RM set and volume set per exercise
-        if (weight > 0 && reps > 0) {
+        // Track all-time best 1RM set and volume set (clean sets only — RPE ≤ 10)
+        const rpe = (set as any).rpe ?? null
+        if (weight > 0 && reps > 0 && (rpe == null || Number(rpe) <= 10)) {
           if (!exMap.has(exId)) {
             exMap.set(exId, { id: exId, name, pr: 0, totalVolume: 0, history: [] })
           }

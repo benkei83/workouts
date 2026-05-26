@@ -10,7 +10,7 @@ import WgerBrowseModal, { type WgerItem } from '@/components/WgerBrowseModal'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import type { ComputedStreak } from '@/lib/streaks'
 
-type SetData = { weight: number, reps: number }
+type SetData = { weight: number; reps: number; rpe?: number | null }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
 type Exercise = {
   id: string
@@ -85,8 +85,15 @@ export default function StrengthForm({
 
   // Initialize state from existing data OR the active exercise's default settings
   const [sets, setSets] = useState<SetData[]>(() => {
-    if (editData?.rawSets) return editData.rawSets
-    
+    if (editData?.rawSets) {
+      // Preserve RPE values when editing an existing log
+      return editData.rawSets.map((s: any) => ({
+        weight: s.weight,
+        reps: s.reps,
+        rpe: s.rpe ?? null,
+      }))
+    }
+
     const defaultEx = exercises.find(ex => ex.id === selectedExercise)
     const tSets = defaultEx?.settings?.target_sets || initialSets
     const tReps = defaultEx?.settings?.target_reps || initialReps
@@ -94,7 +101,8 @@ export default function StrengthForm({
 
     return Array.from({ length: tSets }, () => ({
       weight: tWeight,
-      reps: tReps
+      reps: tReps,
+      rpe: null,
     }))
   })
 
@@ -110,7 +118,8 @@ export default function StrengthForm({
 
       setSets(Array.from({ length: tSets }, () => ({
         weight: tWeight,
-        reps: tReps
+        reps: tReps,
+        rpe: null,
       })))
     }
   }, [selectedExercise, activeExerciseData, editData, initialSets, initialReps, initialWeight])
@@ -158,17 +167,27 @@ export default function StrengthForm({
   const updateSet = (index: number, field: 'weight' | 'reps', delta: number) => {
     setSets(prev => {
       const newSets = [...prev]
-      newSets[index] = { 
-        ...newSets[index], 
-        [field]: Math.max(0, newSets[index][field] + delta) 
+      newSets[index] = {
+        ...newSets[index],
+        [field]: Math.max(0, newSets[index][field] + delta),
       }
       return newSets
     })
   }
 
+  const updateRpe = (index: number, raw: string) => {
+    const val = raw === '' ? null : parseFloat(raw)
+    setSets(prev => {
+      const next = [...prev]
+      next[index] = { ...next[index], rpe: val != null && isNaN(val) ? null : val }
+      return next
+    })
+  }
+
   const addSet = () => {
     const lastSet = sets[sets.length - 1] || { weight: initialWeight, reps: initialReps }
-    setSets([...sets, { ...lastSet }])
+    // New sets start with no RPE — the user can optionally add it after completing the set
+    setSets([...sets, { weight: lastSet.weight, reps: lastSet.reps, rpe: null }])
   }
 
   const removeSet = (indexToRemove: number) => {
@@ -310,43 +329,81 @@ export default function StrengthForm({
         </div>
       )}
 
-      <div className="space-y-3 mb-6">
+      <div className="space-y-2 mb-6">
         {sets.map((set, index) => {
           const isChecked = checkedSets.has(index)
+          const isCheated = set.rpe != null && set.rpe > 10
+          // Show RPE row when the set is done or already has a value (edit mode)
+          const showRpe = isChecked || (set.rpe != null)
           return (
-            <div key={index} className={`flex items-center justify-between gap-1 p-2 rounded-xl border relative group transition-colors ${isChecked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
-              {sets.length > 1 && (
-                <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>
+            <div key={index} className="space-y-1">
+              {/* ── Main set row ── */}
+              <div className={`flex items-center justify-between gap-1 p-2 rounded-xl border relative group transition-colors ${
+                isCheated ? 'bg-red-50 border-red-100' : isChecked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'
+              }`}>
+                {sets.length > 1 && (
+                  <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>
+                )}
+                <div className={`font-bold w-4 text-center text-sm transition-colors ${
+                  isCheated ? 'text-red-300' : isChecked ? 'text-green-400' : 'text-gray-400'
+                }`}>{index + 1}</div>
+
+                <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                  <button type="button" onClick={() => updateSet(index, 'weight', -currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                  <div className="text-center w-12 leading-tight">
+                    <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
+                    <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
+                  </div>
+                  <button type="button" onClick={() => updateSet(index, 'weight', currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                </div>
+
+                <div className="text-gray-300 font-bold text-sm px-1">×</div>
+
+                <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                  <button type="button" onClick={() => updateSet(index, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                  <div className="text-center w-10 leading-tight">
+                    <div className="font-bold text-gray-900">{set.reps}</div>
+                    <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
+                  </div>
+                  <button type="button" onClick={() => updateSet(index, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => toggleSetChecked(index)}
+                  className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-sm transition-all active:scale-95 ${
+                    isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-200'
+                  }`}
+                >✓</button>
+              </div>
+
+              {/* ── RPE row — appears after set is checked or if already has a value ── */}
+              {showRpe && (
+                <div className="flex items-center gap-2 pl-7 pr-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-7">RPE</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    step="0.5"
+                    placeholder="—"
+                    value={set.rpe ?? ''}
+                    onChange={e => updateRpe(index, e.target.value)}
+                    className={`w-16 text-center text-sm font-bold rounded-lg border py-1.5 outline-none focus:ring-1 transition-colors ${
+                      isCheated
+                        ? 'border-red-200 bg-red-50 text-red-500 focus:ring-red-300'
+                        : 'border-gray-200 bg-white text-gray-700 focus:ring-gray-300 placeholder:text-gray-300'
+                    }`}
+                  />
+                  {isCheated ? (
+                    <span className="text-[10px] text-red-500 font-semibold">⚠ Won't count toward records or progression</span>
+                  ) : set.rpe != null ? (
+                    <span className="text-[10px] text-gray-400">
+                      {set.rpe >= 10 ? 'Max effort' : set.rpe >= 8 ? '1-2 reps left' : set.rpe >= 6 ? '3-4 reps left' : 'Moderate'}
+                    </span>
+                  ) : null}
+                </div>
               )}
-              <div className={`font-bold w-4 text-center text-sm transition-colors ${isChecked ? 'text-green-400' : 'text-gray-400'}`}>{index + 1}</div>
-
-              <div className="flex items-center bg-white rounded-lg border border-gray-200">
-                <button type="button" onClick={() => updateSet(index, 'weight', -currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-                <div className="text-center w-12 leading-tight">
-                  <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
-                  <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
-                </div>
-                <button type="button" onClick={() => updateSet(index, 'weight', currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
-              </div>
-
-              <div className="text-gray-300 font-bold text-sm px-1">×</div>
-
-              <div className="flex items-center bg-white rounded-lg border border-gray-200">
-                <button type="button" onClick={() => updateSet(index, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-                <div className="text-center w-10 leading-tight">
-                  <div className="font-bold text-gray-900">{set.reps}</div>
-                  <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
-                </div>
-                <button type="button" onClick={() => updateSet(index, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => toggleSetChecked(index)}
-                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-sm transition-all active:scale-95 ${
-                  isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-200'
-                }`}
-              >✓</button>
             </div>
           )
         })}

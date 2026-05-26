@@ -22,7 +22,7 @@ type StrengthCard = {
   setsCount: number
   maxWeight: number
   repsArray: number[]
-  rawSets: { weight: number, reps: number }[]
+  rawSets: { weight: number; reps: number; rpe?: number | null }[]
   supersetId?: string | null
   createdAt?: string
 }
@@ -47,7 +47,7 @@ type SupersetTemplate = {
 }
 
 type PendingCard =
-  | { pendingId: string; type: 'strength'; exerciseId: string; name: string; sets: { weight: number; reps: number }[]; status: 'saving' | 'error'; errorMessage?: string }
+  | { pendingId: string; type: 'strength'; exerciseId: string; name: string; sets: { weight: number; reps: number; rpe?: number | null }[]; status: 'saving' | 'error'; errorMessage?: string }
   | { pendingId: string; type: 'superset'; matrix: Record<string, { weight: number; reps: number }[]>; names: Record<string, string>; status: 'saving' | 'error'; errorMessage?: string }
 
 export function InteractiveCanvas({
@@ -110,7 +110,7 @@ export function InteractiveCanvas({
   const handleSaveStrength = async (
     exerciseId: string,
     exerciseName: string,
-    sets: { weight: number; reps: number }[]
+    sets: { weight: number; reps: number; rpe?: number | null }[]
   ) => {
     const pendingId = crypto.randomUUID()
 
@@ -192,7 +192,7 @@ export function InteractiveCanvas({
         setsCount: sets.length,
         maxWeight,
         repsArray: sets.map((s: any) => s.actual_reps),
-        rawSets: sets.map((s: any) => ({ weight: s.actual_weight, reps: s.actual_reps })),
+        rawSets: sets.map((s: any) => ({ weight: s.actual_weight, reps: s.actual_reps, rpe: s.rpe ?? null })),
         supersetId: log.superset_id || null,
         createdAt: log.created_at,
       }

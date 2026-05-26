@@ -64,9 +64,9 @@ export async function saveCardioLog(formData: FormData) {
 }
 
 export async function saveStrengthExercise(
-  workoutId: string, 
-  exerciseId: string, 
-  sets: { weight: number, reps: number }[],
+  workoutId: string,
+  exerciseId: string,
+  sets: { weight: number; reps: number; rpe?: number | null }[],
   options?: { createdAt?: string, supersetId?: string }
 ) {
   const supabase = await createClient()
@@ -92,9 +92,10 @@ export async function saveStrengthExercise(
   const setsToInsert = sets.map((set, index) => ({
     strength_log_id: strengthLog.id,
     exercise_id: exerciseId,
-    set_number: index + 1, 
+    set_number: index + 1,
     actual_weight: set.weight,
-    actual_reps: set.reps
+    actual_reps: set.reps,
+    rpe: set.rpe ?? null,
   }))
 
   const { data: insertedSets, error: setsError } = await supabase
@@ -108,15 +109,17 @@ export async function saveStrengthExercise(
     return { error: setsError?.message || 'Failed to save sets' }
   }
 
-  // ── PR detection (per rep count) ──────────────────────────
-  // For each unique rep count in this session, check if the heaviest set at
-  // that rep count beats the all-time record for this exercise at that rep count.
-  // e.g. 80kg × 5 can be a 5RM PR independently of whether 100kg × 1 is a 1RM PR.
-  const uniqueRepCounts = [...new Set(insertedSets.map(s => Number(s.actual_reps)))]
+  // ── PR detection (per rep count, clean sets only) ─────────
+  // Cheated sets (RPE > 10) are excluded — they don't count as PRs.
+  const cleanInsertedSets = insertedSets.filter((_, i) => {
+    const rpe = sets[i]?.rpe
+    return rpe == null || Number(rpe) <= 10
+  })
+  const uniqueRepCounts = [...new Set(cleanInsertedSets.map(s => Number(s.actual_reps)))]
 
   for (const reps of uniqueRepCounts) {
     if (reps <= 0) continue
-    const setsAtReps = insertedSets.filter(s => Number(s.actual_reps) === reps)
+    const setsAtReps = cleanInsertedSets.filter(s => Number(s.actual_reps) === reps)
     const maxWeightAtReps = Math.max(...setsAtReps.map(s => Number(s.actual_weight)))
     if (maxWeightAtReps <= 0) continue
 
@@ -160,13 +163,16 @@ export async function saveStrengthExercise(
     const minSuccesses = Number(setting.min_successes) || 1
     const deloadMult = Number(setting.deload_multiplier) || 2.0
 
-    const completedSetsCount = sets.length
-    const allSetsHitTarget = sets.every(s => Number(s.reps) >= targetReps)
+    // Only clean sets (RPE ≤ 10 or no RPE) count toward progression.
+    // Cheated sets are excluded — they shouldn't trigger a weight increase.
+    const cleanSets = sets.filter(s => s.rpe == null || Number(s.rpe) <= 10)
 
-    // Base all weight calculations on what was actually lifted, not the stored target.
-    // Using the minimum across sets is the conservative choice when someone lifts lighter.
-    const actualWeight = sets.length > 0
-      ? Math.min(...sets.map(s => Number(s.weight)))
+    const completedSetsCount = cleanSets.length
+    const allSetsHitTarget = cleanSets.every(s => Number(s.reps) >= targetReps)
+
+    // Base weight on clean sets only. Fall back to stored target if all sets were cheated.
+    const actualWeight = cleanSets.length > 0
+      ? Math.min(...cleanSets.map(s => Number(s.weight)))
       : newWeight
 
     if (setting.protocol === 'linear') {
@@ -195,7 +201,7 @@ export async function saveStrengthExercise(
     } else if (setting.protocol === 'double') {
       // Rep-range style (e.g. 3×8-12). Lower bound is explicit target_reps_min (default 8).
       const lowerBound = Math.max(1, Number(setting.target_reps_min) || 8)
-      const allSetsHitMaintain = sets.every(s => Number(s.reps) >= lowerBound)
+      const allSetsHitMaintain = cleanSets.every(s => Number(s.reps) >= lowerBound)
 
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
         newSuccesses += 1
@@ -259,7 +265,7 @@ export async function saveStrengthExercise(
 }
 
 export async function updateSupersetLog(
-  cards: { logId: string; exerciseId: string; sets: { weight: number; reps: number }[] }[],
+  cards: { logId: string; exerciseId: string; sets: { weight: number; reps: number; rpe?: number | null }[] }[],
   workoutId: string
 ) {
   const supabase = await createClient()
@@ -276,6 +282,7 @@ export async function updateSupersetLog(
           set_number: i + 1,
           actual_weight: set.weight,
           actual_reps: set.reps,
+          rpe: set.rpe ?? null,
         }))
       )
     }
