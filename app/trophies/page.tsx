@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -5,12 +6,27 @@ import { TROPHY_REGISTRY } from '@/lib/trophies/registry'
 import { CATEGORY_LABELS, CATEGORY_EMOJI } from '@/lib/trophies/types'
 import type { TrophyCategory } from '@/lib/trophies/types'
 
-export default async function TrophiesPage() {
+// ── Sync page shell ───────────────────────────────────────────────────────────
+export default function TrophiesPage() {
+  return (
+    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-16">
+      <Suspense fallback={
+        <div className="flex justify-center items-center h-screen">
+          <p className="text-gray-400 text-sm animate-pulse">Loading trophies…</p>
+        </div>
+      }>
+        <TrophiesContent />
+      </Suspense>
+    </main>
+  )
+}
+
+// ── Async content (all DB access lives here) ──────────────────────────────────
+async function TrophiesContent() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/sign-in')
 
-  // Fetch all earned trophies for this user
   let earnedRows: { trophy_id: string; tier: number; unlocked_at: string }[] = []
   try {
     const { data } = await supabase
@@ -22,7 +38,7 @@ export default async function TrophiesPage() {
     // Table not migrated yet — show empty state
   }
 
-  // Build a lookup: trophy_id → highest earned tier
+  // Build a lookup: trophy_id → highest earned tier + date
   const earnedMap = new Map<string, { tier: number; unlockedAt: string }>()
   for (const row of earnedRows) {
     const existing = earnedMap.get(row.trophy_id)
@@ -31,11 +47,9 @@ export default async function TrophiesPage() {
     }
   }
 
-  // Filter to only earned trophies, grouped by category
   const earned = TROPHY_REGISTRY.filter((t) => earnedMap.has(t.id))
-  const totalEarned = earnedRows.length // count all tier rows earned, not just trophies
+  const totalEarned = earnedRows.length
 
-  // Group by category preserving order of first appearance
   const categories: TrophyCategory[] = ['volume', 'strength', 'consistency', 'cardio', 'mastery', 'grit']
   const byCategory = new Map<TrophyCategory, typeof earned>()
   for (const cat of categories) {
@@ -51,7 +65,7 @@ export default async function TrophiesPage() {
   }
 
   return (
-    <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-16">
+    <>
       <header className="bg-white px-4 py-4 border-b border-gray-200 sticky top-7 z-10 shadow-sm flex items-center gap-3">
         <Link
           href="/"
@@ -94,23 +108,17 @@ export default async function TrophiesPage() {
                       className={`bg-white rounded-xl border border-gray-100 shadow-sm p-4 ring-1 ${colors.ring}`}
                     >
                       <div className="flex items-start gap-3">
-                        {/* Tier emoji */}
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${colors.bg}`}>
                           {tier.emoji}
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          {/* Badge */}
                           <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full mb-1 ${colors.bg} ${colors.text}`}>
                             {tier.label}
                           </span>
-
-                          {/* Description */}
                           <p className="text-xs text-gray-500 font-medium leading-snug mb-2">
                             {tier.description}
                           </p>
-
-                          {/* Quote */}
                           <blockquote className="border-l-2 border-gray-200 pl-2">
                             <p className="text-xs text-gray-700 italic leading-snug">
                               "{trophy.quote}"
@@ -124,20 +132,16 @@ export default async function TrophiesPage() {
                         </div>
                       </div>
 
-                      {/* All tiers row — show which tiers are earned */}
                       <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-50">
-                        {trophy.tiers.map((t) => {
-                          const isEarned = t.level <= earned.tier
-                          return (
-                            <span
-                              key={t.level}
-                              title={t.label}
-                              className={`text-base ${isEarned ? 'opacity-100' : 'opacity-20'}`}
-                            >
-                              {t.emoji}
-                            </span>
-                          )
-                        })}
+                        {trophy.tiers.map((t) => (
+                          <span
+                            key={t.level}
+                            title={t.label}
+                            className={`text-base ${t.level <= earned.tier ? 'opacity-100' : 'opacity-20'}`}
+                          >
+                            {t.emoji}
+                          </span>
+                        ))}
                         <span className="text-[10px] text-gray-300 ml-auto">
                           {new Date(earned.unlockedAt).toLocaleDateString()}
                         </span>
@@ -150,6 +154,6 @@ export default async function TrophiesPage() {
           ))
         )}
       </div>
-    </main>
+    </>
   )
 }

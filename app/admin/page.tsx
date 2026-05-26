@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
@@ -6,12 +7,27 @@ import { CATEGORY_LABELS, CATEGORY_EMOJI } from '@/lib/trophies/types'
 import type { TrophyCategory } from '@/lib/trophies/types'
 import { ForceEvaluateButton, ClearTrophiesButton } from './AdminControls'
 
-export default async function AdminPage() {
+// ── Sync page shell ───────────────────────────────────────────────────────────
+export default function AdminPage() {
+  return (
+    <main className="max-w-2xl mx-auto min-h-screen bg-gray-50 pb-16">
+      <Suspense fallback={
+        <div className="flex justify-center items-center h-screen">
+          <p className="text-gray-400 text-sm animate-pulse">Loading admin…</p>
+        </div>
+      }>
+        <AdminContent />
+      </Suspense>
+    </main>
+  )
+}
+
+// ── Async content (all DB access lives here) ──────────────────────────────────
+async function AdminContent() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/sign-in')
 
-  // Guard: only allow the admin email
   const adminEmail = process.env.ADMIN_EMAIL
   if (adminEmail && user.email !== adminEmail) redirect('/')
 
@@ -25,7 +41,6 @@ export default async function AdminPage() {
     earnedRows = data ?? []
   } catch { /* table not migrated yet */ }
 
-  // Build lookup: trophy_id → Set of earned tiers
   const earnedByTrophy = new Map<string, Set<number>>()
   for (const row of earnedRows) {
     if (!earnedByTrophy.has(row.trophy_id)) earnedByTrophy.set(row.trophy_id, new Set())
@@ -33,11 +48,10 @@ export default async function AdminPage() {
   }
 
   const categories: TrophyCategory[] = ['volume', 'strength', 'consistency', 'cardio', 'mastery', 'grit']
-
   const tierEmojis = ['🥉', '🥈', '🥇', '💎']
 
   return (
-    <main className="max-w-2xl mx-auto min-h-screen bg-gray-50 pb-16">
+    <>
       <header className="bg-white px-4 py-4 border-b border-gray-200 sticky top-7 z-10 shadow-sm flex items-center gap-3">
         <Link
           href="/"
@@ -86,7 +100,6 @@ export default async function AdminPage() {
                       className="bg-white rounded-xl border border-gray-100 shadow-sm p-3"
                     >
                       <div className="flex items-start gap-3">
-                        {/* Tiers */}
                         <div className="flex gap-1 flex-shrink-0 mt-0.5">
                           {tierEmojis.map((em, i) => {
                             const tierLevel = i + 1
@@ -104,7 +117,6 @@ export default async function AdminPage() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          {/* ID + evaluator */}
                           <div className="flex items-center gap-2 flex-wrap mb-0.5">
                             <code className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-mono">
                               {trophy.id}
@@ -119,7 +131,6 @@ export default async function AdminPage() {
                             )}
                           </div>
 
-                          {/* Quote */}
                           <p className="text-xs text-gray-600 italic leading-snug">
                             "{trophy.quote}"
                             {trophy.attribution && (
@@ -127,7 +138,6 @@ export default async function AdminPage() {
                             )}
                           </p>
 
-                          {/* Thresholds */}
                           <div className="flex flex-wrap gap-2 mt-1.5">
                             {trophy.tiers.map((t) => (
                               <span
@@ -152,6 +162,6 @@ export default async function AdminPage() {
           )
         })}
       </div>
-    </main>
+    </>
   )
 }
