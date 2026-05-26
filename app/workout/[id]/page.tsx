@@ -56,6 +56,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
   if (error || !workout) redirect('/')
 
   const isFinished = workout.total_duration_mins !== null
+  const notes = (workout as any).notes ?? null
 
 // 1. Fetch the raw exercises (user's own library only)
   const { data: allExercisesRaw } = await supabase
@@ -230,6 +231,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           durationMins={workout.total_duration_mins ?? 0}
           feelRating={(workout as any).feel_rating ?? null}
           intensity={(workout as any).intensity ?? null}
+          notes={notes}
           exerciseSettingsMap={exerciseSettingsMap}
           historicalBests={historicalBests}
         />

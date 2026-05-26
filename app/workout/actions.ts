@@ -5,6 +5,21 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { WGER_CATEGORY_MAP, WGER_EQUIPMENT_MAP } from '@/lib/muscleGroups'
 
+export async function saveWorkoutNotes(workoutId: string, notes: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const { error } = await supabase
+    .from('workouts')
+    .update({ notes })
+    .eq('id', workoutId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  return { ok: true }
+}
+
 export async function saveCardioLog(formData: FormData) {
   const supabase = await createClient()
   

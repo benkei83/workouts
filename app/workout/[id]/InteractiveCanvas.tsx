@@ -14,6 +14,7 @@ import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/d
 import Link from 'next/link'
 import WorkoutStatsPanel from '@/components/stats/WorkoutStatsPanel'
 import WorkoutFeelEditor from '@/components/WorkoutFeelEditor'
+import WorkoutNotes from '@/components/WorkoutNotes'
 
 type StrengthCard = {
   logId: string
@@ -62,6 +63,7 @@ export function InteractiveCanvas({
   durationMins = 0,
   feelRating = null,
   intensity = null,
+  notes = null,
   exerciseSettingsMap = {},
   historicalBests = {},
 }: {
@@ -76,6 +78,7 @@ export function InteractiveCanvas({
   durationMins?: number
   feelRating?: number | null
   intensity?: string | null
+  notes?: string | null
   exerciseSettingsMap?: Record<string, { target_reps?: number | null } | null>
   historicalBests?: Record<string, { best1rm: number; bestVolume: number }>
 }) {
@@ -284,7 +287,10 @@ export function InteractiveCanvas({
         />
       )}
 
-      {/* 0b. STALE-OP RECOVERY BANNER */}
+      {/* 0b. NOTES — always visible, auto-saves on change */}
+      <WorkoutNotes workoutId={workoutId} initialNotes={notes} />
+
+      {/* 0d. STALE-OP RECOVERY BANNER */}
       {staleOps.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-amber-700">
