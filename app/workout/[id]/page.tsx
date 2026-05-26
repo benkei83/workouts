@@ -56,11 +56,12 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   const isFinished = workout.total_duration_mins !== null
 
-// 1. Fetch the raw exercises
+// 1. Fetch the raw exercises (user's own library only)
   const { data: allExercisesRaw } = await supabase
     .from('exercises')
     .select('id, name')
     .eq('category', 'strength')
+    .eq('user_id', user.id)
     .order('name')
 
   // 2. Fetch the FULL settings object
@@ -94,6 +95,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         )
       )
     `)
+    .eq('user_id', user.id)
     .order('name')
 
   // 5. Fetch user's active program (for rotation tracking)

@@ -1,26 +1,92 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { createCustomExercise, updateExerciseSettings, deleteExercise } from '@/app/workout/actions'
+import { useState, useTransition, useMemo } from 'react'
+import {
+  createCustomExercise,
+  updateExerciseSettings,
+  updateExerciseMeta,
+  deleteExercise,
+} from '@/app/workout/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
+import WgerBrowseModal, { type WgerItem } from '@/components/WgerBrowseModal'
+import { MUSCLE_GROUPS, EQUIPMENT_LABELS } from '@/lib/muscleGroups'
 
 type Exercise = {
   id: string
   name: string
   category: string
   user_id: string | null
+  muscle_group: string | null
+  equipment: string | null
   settings: any | null
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const MG_LABELS: Record<string, string> = Object.fromEntries(MUSCLE_GROUPS.map(g => [g.id, g.label]))
+const MG_COLORS: Record<string, string> = {
+  chest:     'bg-red-50 text-red-600 border-red-100',
+  back:      'bg-blue-50 text-blue-600 border-blue-100',
+  shoulders: 'bg-purple-50 text-purple-600 border-purple-100',
+  arms:      'bg-orange-50 text-orange-600 border-orange-100',
+  legs:      'bg-green-50 text-green-600 border-green-100',
+  core:      'bg-yellow-50 text-yellow-700 border-yellow-100',
+  calves:    'bg-teal-50 text-teal-600 border-teal-100',
+}
+
+function MgChip({ id }: { id: string | null }) {
+  if (!id || !MG_LABELS[id]) return null
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${MG_COLORS[id] ?? 'bg-gray-50 text-gray-500 border-gray-100'}`}>
+      {MG_LABELS[id]}
+    </span>
+  )
+}
+function EqChip({ id }: { id: string | null }) {
+  if (!id || !EQUIPMENT_LABELS[id]) return null
+  return (
+    <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 border border-gray-200">
+      {EQUIPMENT_LABELS[id]}
+    </span>
+  )
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function ExerciseManager({ initialExercises }: { initialExercises: Exercise[] }) {
+  const [exercises, setExercises] = useState(initialExercises)
   const [search, setSearch] = useState('')
+  const [muscleFilter, setMuscleFilter] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null)
+  const [isWgerOpen, setIsWgerOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const filteredExercises = initialExercises.filter(e => 
-    e.category === 'strength' && e.name.toLowerCase().includes(search.toLowerCase())
+  const libraryNames = useMemo(
+    () => new Set(exercises.map(e => e.name.toLowerCase())),
+    [exercises]
   )
+
+  const filtered = exercises.filter(e => {
+    if (e.category !== 'strength') return false
+    if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (muscleFilter && e.muscle_group !== muscleFilter) return false
+    return true
+  })
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleWgerAdded = (item: WgerItem, id: string) => {
+    setExercises(prev => [...prev, {
+      id,
+      name: item.name,
+      category: 'strength',
+      user_id: null,
+      muscle_group: item.muscle_group,
+      equipment: item.equipment,
+      settings: null,
+    }])
+  }
 
   const handleCreate = (formData: FormData) => {
     startTransition(async () => {
@@ -50,99 +116,201 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
     })
   }
 
-  // NEW: Delete handler
-  const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this exercise? This will remove it from all past workouts.')) {
-      startTransition(() => {
-        deleteExercise(id)
-      })
-    }
+  const handleUpdateMeta = (formData: FormData) => {
+    if (!editingExercise) return
+    const mg = (formData.get('muscle_group') as string) || null
+    const eq = (formData.get('equipment') as string) || null
+    startTransition(async () => {
+      await updateExerciseMeta(editingExercise.id, mg, eq)
+      setExercises(prev => prev.map(e => e.id === editingExercise.id ? { ...e, muscle_group: mg, equipment: eq } : e))
+      setEditingExercise(prev => prev ? { ...prev, muscle_group: mg, equipment: eq } : null)
+    })
   }
 
+  const handleDelete = (id: string) => {
+    if (!window.confirm('Delete this exercise? It will be removed from all past workouts.')) return
+    startTransition(async () => {
+      await deleteExercise(id)
+      setExercises(prev => prev.filter(e => e.id !== id))
+    })
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+
+      {/* Top bar — search on one row, action buttons on the next */}
+      <input
+        type="text"
+        placeholder="Search exercises..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="w-full bg-white border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-black"
+      />
       <div className="flex gap-2">
-        <input 
-          type="text" 
-          placeholder="Search exercises..." 
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 bg-white border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-black"
-        />
-        <button 
-          onClick={() => setIsCreateOpen(true)}
-          className="bg-black text-white font-bold px-4 rounded-xl shadow-sm hover:bg-gray-800 transition-colors"
+        <button
+          onClick={() => setIsWgerOpen(true)}
+          className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-xl shadow-sm hover:bg-blue-700 transition-colors text-sm"
         >
-          + New
+          + From wger
+        </button>
+        <button
+          onClick={() => setIsCreateOpen(true)}
+          className="flex-1 bg-black text-white font-bold py-2.5 rounded-xl shadow-sm hover:bg-gray-800 transition-colors text-sm"
+        >
+          + Custom
         </button>
       </div>
 
-      <div className="space-y-3">
-        {filteredExercises.map(ex => (
-          <div 
-            key={ex.id} 
-            onClick={() => setEditingExercise(ex)}
-            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center cursor-pointer hover:border-gray-300 transition-colors group"
+      {/* Muscle group filter chips */}
+      <div className="flex gap-2 flex-wrap">
+        {[{ id: null, label: 'All' }, ...MUSCLE_GROUPS].map(g => (
+          <button
+            key={g.id ?? 'all'}
+            onClick={() => setMuscleFilter(g.id)}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+              muscleFilter === g.id
+                ? 'bg-black text-white border-black'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+            }`}
           >
-            <div>
-              <h3 className="font-bold text-gray-900">{ex.name}</h3>
-              <p className="text-sm font-medium text-gray-500 mt-1">
-                {ex.settings 
-                  ? `${ex.settings.target_sets} sets • ${ex.settings.target_reps} reps • Target: ${ex.settings.current_weight}kg` 
-                  : 'No targets set'}
-              </p>
-            </div>
-            
-            {/* UPDATED ACTION BUTTONS */}
-            <div className="flex items-center gap-1">
-              <span className="text-gray-300 group-hover:text-gray-900 transition-colors p-2">✏️</span>
-              <button 
-                onClick={(e) => { e.stopPropagation(); handleDelete(ex.id) }}
-                className="text-gray-300 hover:text-red-500 font-bold p-2 transition-colors text-lg"
-              >✕</button>
-            </div>
-          </div>
+            {g.label}
+          </button>
         ))}
       </div>
 
+      {/* Library list */}
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <p className="text-gray-400 text-center py-8 text-sm">No exercises found.</p>
+        ) : (
+          filtered.map(ex => (
+            <div
+              key={ex.id}
+              onClick={() => setEditingExercise(ex)}
+              className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-start cursor-pointer hover:border-gray-300 transition-colors group"
+            >
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold text-gray-900 leading-snug">{ex.name}</h3>
+                {(ex.muscle_group || ex.equipment) && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    <MgChip id={ex.muscle_group} />
+                    <EqChip id={ex.equipment} />
+                  </div>
+                )}
+                <p className="text-sm font-medium text-gray-400 mt-1.5">
+                  {ex.settings
+                    ? `${ex.settings.target_sets} sets · ${ex.settings.target_reps} reps · ${ex.settings.current_weight}kg`
+                    : 'No targets set'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                <span className="text-gray-300 group-hover:text-gray-900 transition-colors p-2">✏️</span>
+                <button
+                  onClick={e => { e.stopPropagation(); handleDelete(ex.id) }}
+                  className="text-gray-300 hover:text-red-500 font-bold p-2 transition-colors text-lg"
+                >✕</button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* wger browse modal */}
+      {isWgerOpen && (
+        <WgerBrowseModal
+          libraryNames={libraryNames}
+          onClose={() => setIsWgerOpen(false)}
+          onAdded={handleWgerAdded}
+        />
+      )}
+
+      {/* Create custom modal */}
       {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900">Add Exercise</h2>
+              <h2 className="text-xl font-bold text-gray-900">Custom Exercise</h2>
               <button onClick={() => setIsCreateOpen(false)} className="text-gray-400 font-bold p-2">✕</button>
             </div>
             <form action={handleCreate} className="space-y-4">
               <input type="hidden" name="category" value="strength" />
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Exercise Name</label>
-                <input type="text" name="name" required placeholder="e.g., Deficit Deadlift" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Name</label>
+                <input type="text" name="name" required placeholder="e.g., Deficit Deadlift"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none" />
               </div>
-              <button type="submit" disabled={isPending} className="w-full bg-black text-white font-bold rounded-xl py-4 mt-2 disabled:opacity-50">
-                {isPending ? 'Saving...' : 'Create Exercise'}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Muscle Group</label>
+                <select name="muscle_group" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none">
+                  <option value="">— none —</option>
+                  {MUSCLE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Equipment</label>
+                <select name="equipment" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none">
+                  <option value="">— none —</option>
+                  {Object.entries(EQUIPMENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </div>
+              <button type="submit" disabled={isPending}
+                className="w-full bg-black text-white font-bold rounded-xl py-4 disabled:opacity-50">
+                {isPending ? 'Saving...' : 'Create'}
               </button>
             </form>
           </div>
         </div>
       )}
 
+      {/* Edit modal */}
       {editingExercise && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
-          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">{editingExercise.name}</h2>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-1">Set Baseline Targets</p>
-              </div>
-              <button onClick={() => setEditingExercise(null)} className="text-gray-400 font-bold p-2">✕</button>
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4 flex flex-col max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-xl font-bold text-gray-900">{editingExercise.name}</h2>
+              <button onClick={() => setEditingExercise(null)} className="text-gray-400 font-bold p-2 mt-[-4px]">✕</button>
             </div>
-            
-            <form action={handleUpdateSettings}>
-              <ExerciseSettingsFields settings={editingExercise.settings} />
-              <button type="submit" disabled={isPending} className="w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
-                {isPending ? 'Updating...' : 'Save Settings'}
-              </button>
-            </form>
+            <div className="px-6 py-5 space-y-6">
+              {/* Tags */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Tags</p>
+                <form action={handleUpdateMeta} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Muscle Group</label>
+                    <select name="muscle_group" defaultValue={editingExercise.muscle_group ?? ''}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none">
+                      <option value="">— none —</option>
+                      {MUSCLE_GROUPS.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Equipment</label>
+                    <select name="equipment" defaultValue={editingExercise.equipment ?? ''}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none">
+                      <option value="">— none —</option>
+                      {Object.entries(EQUIPMENT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
+                  </div>
+                  <button type="submit" disabled={isPending}
+                    className="w-full bg-gray-800 text-white font-bold rounded-xl py-2.5 text-sm disabled:opacity-50 hover:bg-black transition-colors">
+                    {isPending ? 'Saving…' : 'Save Tags'}
+                  </button>
+                </form>
+              </div>
+              {/* Training settings */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Training Settings</p>
+                <form action={handleUpdateSettings}>
+                  <ExerciseSettingsFields settings={editingExercise.settings} />
+                  <button type="submit" disabled={isPending}
+                    className="w-full bg-black text-white font-bold rounded-xl py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
+                    {isPending ? 'Updating...' : 'Save Settings'}
+                  </button>
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       )}

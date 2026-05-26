@@ -40,10 +40,11 @@ async function ExerciseDataLoader() {
   
   if (!user) redirect('/sign-in')
 
-  // Fetch all exercises (Global templates + your private ones)
+  // Fetch this user's exercises
   const { data: exercises } = await supabase
     .from('exercises')
     .select('*')
+    .eq('user_id', user.id)
     .order('name')
 
   // Fetch your active target settings

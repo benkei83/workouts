@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { WGER_CATEGORY_MAP, WGER_EQUIPMENT_MAP } from '@/lib/muscleGroups'
 
 export async function saveCardioLog(formData: FormData) {
   const supabase = await createClient()
@@ -381,6 +382,8 @@ export async function deleteStrengthLog(logId: string, workoutId: string) {
 export async function createCustomExercise(formData: FormData) {
   const name = formData.get('name') as string
   const category = formData.get('category') as string
+  const muscle_group = (formData.get('muscle_group') as string) || null
+  const equipment = (formData.get('equipment') as string) || null
   if (!name || !category) return { error: 'Missing fields' }
 
   const supabase = await createClient()
@@ -390,14 +393,112 @@ export async function createCustomExercise(formData: FormData) {
   const { data, error } = await supabase.from('exercises').insert({
     name,
     category,
-    user_id: user.id 
+    muscle_group,
+    equipment,
+    user_id: user.id
   }).select('id').single()
 
   if (error || !data) return { error: 'Failed to create exercise' }
-  
-  revalidatePath('/exercises') 
-  revalidatePath('/') 
+
+  revalidatePath('/exercises')
+  revalidatePath('/')
   return { success: true, id: data.id }
+}
+
+/** Fetch the full wger exercise catalogue (English, all pages, sorted by name, deduplicated).
+ *  Cached for 1 hour so repeated opens are instant. */
+export async function fetchAllWgerExercises(): Promise<
+  { name: string; muscle_group: string | null; equipment: string | null }[]
+> {
+  let url: string | null =
+    'https://wger.de/api/v2/exerciseinfo/?format=json&language=2&limit=100&offset=0'
+  const results: { name: string; muscle_group: string | null; equipment: string | null }[] = []
+  const seen = new Set<string>()
+
+  while (url) {
+    const res = await fetch(url, { cache: 'force-cache' })
+    if (!res.ok) break
+    const page = await res.json()
+
+    for (const ex of page.results as any[]) {
+      const enTrans = (ex.translations ?? []).find((t: any) => t.language === 2)
+      if (!enTrans?.name?.trim()) continue
+
+      const name = enTrans.name.trim()
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue  // wger has duplicate entries — skip them
+      seen.add(key)
+
+      const firstEquip = ex.equipment?.[0]?.name
+      results.push({
+        name,
+        muscle_group: WGER_CATEGORY_MAP[ex.category?.name] ?? null,
+        equipment: firstEquip ? (WGER_EQUIPMENT_MAP[firstEquip] ?? null) : null,
+      })
+    }
+
+    url = page.next ?? null
+  }
+
+  return results.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** Add a single exercise (from wger or manually) as a global template.
+ *  Does NOT revalidate — caller does optimistic UI update instead so the modal stays open.
+ *  Works even if the muscle_group / equipment columns haven't been migrated yet. */
+export async function addWgerExercise(name: string, muscle_group: string | null, equipment: string | null = null) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  // If it already exists (by name, case-insensitive), just return it
+  const { data: existing } = await supabase
+    .from('exercises')
+    .select('id')
+    .ilike('name', name)
+    .maybeSingle()
+
+  if (existing) return { success: true, id: existing.id, existed: true }
+
+  // Insert with only the columns that are guaranteed to exist
+  const { data, error } = await supabase
+    .from('exercises')
+    .insert({ name, category: 'strength', user_id: user.id })
+    .select('id')
+    .single()
+
+  if (error || !data) return { error: error?.message ?? 'Failed to add exercise' }
+
+  // Best-effort: also set muscle_group + equipment if the columns exist (migration may not be run yet)
+  if (muscle_group || equipment) {
+    await supabase.from('exercises')
+      .update({ muscle_group, equipment })
+      .eq('id', data.id)
+    // Failure here is silent — tags just won't be set until migration is run
+  }
+
+  return { success: true, id: data.id, existed: false }
+}
+
+/** Update the muscle group and equipment tags on an existing exercise */
+export async function updateExerciseMeta(
+  exerciseId: string,
+  muscle_group: string | null,
+  equipment: string | null,
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('exercises')
+    .update({ muscle_group, equipment })
+    .eq('id', exerciseId)
+
+  if (error) return { error: 'Failed to update exercise' }
+
+  revalidatePath('/exercises')
+  return { success: true }
 }
 
 export async function deleteExercise(exerciseId: string) {
@@ -468,6 +569,7 @@ export async function fetchProgramById(id: string) {
       )
     `)
     .eq('id', id)
+    .eq('user_id', user.id)
     .single()
 
   return data || null
@@ -491,6 +593,7 @@ export async function fetchPrograms() {
         )
       )
     `)
+    .eq('user_id', user.id)
     .order('name')
 
   return data || []

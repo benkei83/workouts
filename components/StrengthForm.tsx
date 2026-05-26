@@ -6,6 +6,7 @@ import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
 import MaintenanceBadge from '@/components/MaintenanceBadge'
+import WgerBrowseModal, { type WgerItem } from '@/components/WgerBrowseModal'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import type { ComputedStreak } from '@/lib/streaks'
 
@@ -40,9 +41,14 @@ export default function StrengthForm({
   initialWeight?: number,
   editData?: any
 }) {
+  // Local augmentable copy of exercises — so wger-added ones appear immediately
+  const [exerciseList, setExerciseList] = useState(exercises)
   const [selectedExercise, setSelectedExercise] = useState(editData?.exerciseId || exercises[0]?.id || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
+  const [isWgerOpen, setIsWgerOpen] = useState(false)
+
+  const libraryNames = new Set(exerciseList.map(e => e.name.toLowerCase()))
 
   // Initialize state from existing data OR the active exercise's default settings
   const [sets, setSets] = useState<SetData[]>(() => {
@@ -59,7 +65,7 @@ export default function StrengthForm({
     }))
   })
 
-  const activeExerciseData = exercises.find(ex => ex.id === selectedExercise)
+  const activeExerciseData = exerciseList.find(ex => ex.id === selectedExercise)
   const currentIncrement = activeExerciseData?.increment_step || 2.5
 
   // SMART PRE-FILL: Auto-update the UI when the user selects a different exercise
@@ -168,37 +174,50 @@ export default function StrengthForm({
         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Exercise</label>
         
         {uiMode === 'select' && (
-          <div className="flex gap-2">
-            <select 
-              value={selectedExercise}
-              onChange={(e) => setSelectedExercise(e.target.value)}
-              className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
-            >
-              {exercises.map(ex => (
-                <option key={ex.id} value={ex.id}>{ex.name}</option>
-              ))}
-            </select>
-            <button 
-              type="button" 
-              onClick={() => setUiMode('edit_settings')} 
-              className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors shadow-sm"
-            >⚙️</button>
-            <button 
-              type="button" 
-              onClick={() => setUiMode('create')} 
-              className="bg-gray-100 text-gray-600 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors shadow-sm"
-            >+</button>
+          <div className="space-y-2">
+            {/* Exercise selector + settings */}
+            <div className="flex gap-2">
+              <select
+                value={selectedExercise}
+                onChange={(e) => setSelectedExercise(e.target.value)}
+                className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
+              >
+                {exerciseList.map(ex => (
+                  <option key={ex.id} value={ex.id}>{ex.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setUiMode('edit_settings')}
+                className="flex-shrink-0 bg-gray-100 text-gray-500 font-bold px-3 rounded-xl hover:bg-gray-200 transition-colors"
+              >⚙️</button>
+            </div>
+            {/* Add exercise buttons */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setUiMode('create')}
+                className="flex-1 bg-gray-100 text-gray-700 font-bold py-2 rounded-xl hover:bg-gray-200 transition-colors text-sm"
+              >+ Custom</button>
+              <button
+                type="button"
+                onClick={() => setIsWgerOpen(true)}
+                className="flex-1 bg-blue-600 text-white font-bold py-2 rounded-xl hover:bg-blue-700 transition-colors text-sm"
+              >Browse wger</button>
+            </div>
           </div>
         )}
 
         {uiMode === 'create' && (
-          <div className="flex gap-2">
-            <input 
-              id="new-exercise-input" type="text" placeholder="e.g., T-Bar Row" 
-              className="flex-1 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black" autoFocus
-            />
-            <button type="button" onClick={handleInlineCreate} disabled={isSubmitting} className="bg-black text-white font-bold px-4 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50">Save</button>
-            <button type="button" onClick={() => setUiMode('select')} className="bg-gray-100 text-gray-500 font-bold px-4 rounded-xl hover:bg-gray-200 transition-colors">✕</button>
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                id="new-exercise-input" type="text" placeholder="e.g., T-Bar Row"
+                className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black" autoFocus
+              />
+              <button type="button" onClick={handleInlineCreate} disabled={isSubmitting} className="flex-shrink-0 bg-black text-white font-bold px-4 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50">Save</button>
+              <button type="button" onClick={() => setUiMode('select')} className="flex-shrink-0 bg-gray-100 text-gray-500 font-bold px-3 rounded-xl hover:bg-gray-200 transition-colors">✕</button>
+            </div>
           </div>
         )}
 
@@ -285,6 +304,20 @@ export default function StrengthForm({
       <button type="button" onClick={handleSave} disabled={isSubmitting || uiMode !== 'select'} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
         {isSubmitting ? 'Saving...' : (editData ? 'Update Exercise' : 'Save Exercise')}
       </button>
+
+      {/* wger browse — adds to library AND selects the exercise */}
+      {isWgerOpen && (
+        <WgerBrowseModal
+          libraryNames={libraryNames}
+          onClose={() => setIsWgerOpen(false)}
+          onAdded={(item: WgerItem, id: string) => {
+            // Add to local list so it appears in the dropdown immediately
+            setExerciseList(prev => [...prev, { id, name: item.name, increment_step: 2.5, settings: null }])
+            setSelectedExercise(id)
+            setIsWgerOpen(false)
+          }}
+        />
+      )}
     </div>
   )
 }

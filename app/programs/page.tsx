@@ -37,6 +37,7 @@ async function ProgramDataLoader() {
     .from('exercises')
     .select('id, name')
     .eq('category', 'strength')
+    .eq('user_id', user.id)
     .order('name')
 
   const { data: programs } = await supabase
@@ -52,6 +53,7 @@ async function ProgramDataLoader() {
         )
       )
     `)
+    .eq('user_id', user.id)
     .order('name')
 
   const { data: activeProgram } = await supabase
