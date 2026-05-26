@@ -94,7 +94,7 @@ async function Dashboard() {
 
   return (
     <>
-      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-7 z-10 shadow-sm">
         {/* Top row: title + signed-in email */}
         <div className="flex justify-between items-center">
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>

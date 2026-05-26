@@ -14,6 +14,7 @@ export default function FinishWorkoutButton({ workoutId }: { workoutId: string }
   const handleFinish = (rating: number | null, intensity: Intensity | null) => {
     startTransition(async () => {
       await finishWorkoutWithFeel(workoutId, rating, intensity)
+      router.refresh()
       router.push('/')
     })
   }

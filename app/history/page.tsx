@@ -7,7 +7,7 @@ import { computeWorkoutOutcomes } from '@/lib/workoutOutcomes'
 export default function HistoryPage() {
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm flex items-center gap-3">
+      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-7 z-10 shadow-sm flex items-center gap-3">
         <Link
           href="/"
           className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors font-bold text-gray-500"
