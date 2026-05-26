@@ -116,6 +116,11 @@ export default function CardioForm({
       formData.set('incline', averageIncline.toFixed(2))
     }
 
+    if (sessionType === 'distance' && distMins > 0) {
+      const averageSpeed = distKm / (distMins / 60)
+      formData.set('average_speed', averageSpeed.toFixed(2))
+    }
+
     // THE MAGIC: If editing, destroy the old record right before saving the new one
     if (editData) {
       await deleteRunningLog(editData.id, workoutId)

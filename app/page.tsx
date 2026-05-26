@@ -158,14 +158,14 @@ async function WorkoutManager({ userId }: { userId: string }) {
         running_logs ( id, distance_km ),
         strength_logs (
           id,
-          strength_sets ( exercise_id, is_pr, actual_reps, exercises ( name ) )
+          strength_sets ( exercise_id, is_pr, actual_reps, actual_weight, exercises ( name ) )
         )
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false }),
     supabase
       .from('user_exercise_settings')
-      .select('exercise_id, protocol, target_sets, target_reps, target_reps_min')
+      .select('exercise_id, protocol, target_sets, target_reps, target_reps_min, min_successes, max_failures')
       .eq('user_id', userId)
       .eq('is_active', true),
   ])
@@ -221,47 +221,112 @@ async function WorkoutManager({ userId }: { userId: string }) {
           <p className="text-gray-500 text-center py-8 bg-white rounded-2xl border border-dashed border-gray-300">No history found. Time to break a sweat!</p>
         ) : (
           <ul className="space-y-3">
-            {historyWorkouts.map((workout) => {
+            {(() => {
+              // ── Pre-pass 1: base outcome per (workout × exercise) ────────────────
+              type BaseOutcome = 'success' | 'maintenance' | 'failure'
+              const baseOutcomeMap = new Map<string, Map<string, BaseOutcome>>()
+              for (const w of historyWorkouts) {
+                const allS = (w.strength_logs ?? []).flatMap((l: any) => l.strength_sets ?? [])
+                const exReps = new Map<string, number[]>()
+                for (const s of allS as any[]) {
+                  if (!s.exercise_id) continue
+                  if (!exReps.has(s.exercise_id)) exReps.set(s.exercise_id, [])
+                  exReps.get(s.exercise_id)!.push(Number(s.actual_reps))
+                }
+                const exOutcomes = new Map<string, BaseOutcome>()
+                for (const [exId, reps] of exReps) {
+                  const cfg = (settingsMap as any)[exId]
+                  if (!cfg) continue
+                  const n = reps.length
+                  const tSets = Number(cfg.target_sets) || 5
+                  const tReps = Number(cfg.target_reps) || 5
+                  const tMin  = Number(cfg.target_reps_min) || 8
+                  const allTop   = reps.every(r => r >= tReps)
+                  const allFloor = reps.every(r => r >= tMin)
+                  let o: BaseOutcome
+                  if (n >= tSets && allTop)                                    o = 'success'
+                  else if (cfg.protocol === 'double' && n >= tSets && allFloor) o = 'maintenance'
+                  else                                                           o = 'failure'
+                  exOutcomes.set(exId, o)
+                }
+                baseOutcomeMap.set(w.id, exOutcomes)
+              }
+
+              // ── Pre-pass 2: consecutive streaks per (workout × exercise) ─────────
+              // historyWorkouts is newest-first; older workouts have higher indices.
+              // For each workout, count how many consecutive same-type outcomes end HERE,
+              // walking backwards through older sessions (skipping days not logged).
+              const failureStreakMap = new Map<string, Map<string, number>>()
+              const successStreakMap = new Map<string, Map<string, number>>()
+              for (let i = 0; i < historyWorkouts.length; i++) {
+                const exMap = baseOutcomeMap.get(historyWorkouts[i].id) ?? new Map<string, BaseOutcome>()
+                const fStreaks = new Map<string, number>()
+                const sStreaks = new Map<string, number>()
+                for (const [exId, outcome] of exMap) {
+                  const target = outcome === 'failure' ? 'failure' : outcome === 'success' ? 'success' : null
+                  if (!target) { fStreaks.set(exId, 0); sStreaks.set(exId, 0); continue }
+                  let count = 1
+                  for (let j = i + 1; j < historyWorkouts.length; j++) {
+                    const o = baseOutcomeMap.get(historyWorkouts[j].id)?.get(exId)
+                    if (o === target) count++
+                    else if (o !== undefined) break   // different outcome ends the streak
+                    // o === undefined → exercise not logged that day → skip
+                  }
+                  fStreaks.set(exId, outcome === 'failure' ? count : 0)
+                  sStreaks.set(exId, outcome === 'success' ? count : 0)
+                }
+                failureStreakMap.set(historyWorkouts[i].id, fStreaks)
+                successStreakMap.set(historyWorkouts[i].id, sStreaks)
+              }
+
+              return historyWorkouts.map((workout) => {
               const date = new Date(workout.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
               const hasRunning = (workout.running_logs?.length ?? 0) > 0
               const hasStrength = (workout.strength_logs?.length ?? 0) > 0
 
-              // Derive PR flag, exercise names, and per-exercise outcomes from nested sets
+              // Derive PR flag and exercise names from nested sets
               const allSets = (workout.strength_logs ?? []).flatMap((l: any) => l.strength_sets ?? [])
               const hasPR = allSets.some((s: any) => s.is_pr)
 
               // Group sets by exercise (preserving first-seen order)
               const exerciseOrder: string[] = []
-              const setsByExercise = new Map<string, { name: string; reps: number[] }>()
+              const setsByExercise = new Map<string, { name: string }>()
               for (const s of allSets as any[]) {
                 const exId: string = s.exercise_id
                 if (!exId) continue
                 if (!setsByExercise.has(exId)) {
                   exerciseOrder.push(exId)
-                  setsByExercise.set(exId, { name: s.exercises?.name ?? 'Unknown', reps: [] })
+                  setsByExercise.set(exId, { name: s.exercises?.name ?? 'Unknown' })
                 }
-                setsByExercise.get(exId)!.reps.push(Number(s.actual_reps))
               }
 
               const exerciseNames = exerciseOrder.map(id => setsByExercise.get(id)!.name)
 
-              // Compute outcome for exercises that have a progression protocol
-              type Outcome = 'success' | 'maintenance' | 'failure'
+              // Map pre-computed base outcomes to final display outcomes
+              type Outcome = 'success_increase' | 'success' | 'maintenance' | 'failure_deload' | 'failure'
               const outcomes: { name: string; outcome: Outcome }[] = []
               for (const exId of exerciseOrder) {
                 const cfg = (settingsMap as any)[exId]
                 if (!cfg) continue
-                const { reps } = setsByExercise.get(exId)!
-                const n = reps.length
-                const targetSets = Number(cfg.target_sets) || 5
-                const targetReps = Number(cfg.target_reps) || 5
-                const targetRepsMin = Number(cfg.target_reps_min) || 8
-                const allTop   = reps.every(r => r >= targetReps)
-                const allFloor = reps.every(r => r >= targetRepsMin)
+                const base = baseOutcomeMap.get(workout.id)?.get(exId)
+                if (!base) continue
+
+                const minSuccesses  = Number(cfg.min_successes) || 1
+                const maxFails     = Number(cfg.max_failures)  || 3
+                const failStreak   = failureStreakMap.get(workout.id)?.get(exId) ?? 0
+                const successStreak = successStreakMap.get(workout.id)?.get(exId) ?? 0
+
                 let outcome: Outcome
-                if (n >= targetSets && allTop) outcome = 'success'
-                else if (cfg.protocol === 'double' && n >= targetSets && allFloor) outcome = 'maintenance'
-                else outcome = 'failure'
+                if (base === 'success') {
+                  // Triangle when the success streak reaches the min_successes threshold
+                  // (meaning weight goes up next session)
+                  outcome = successStreak >= minSuccesses ? 'success_increase' : 'success'
+                } else if (base === 'maintenance') {
+                  outcome = 'maintenance'
+                } else {
+                  // Triangle when failure streak hits max_failures → deload fires next session
+                  outcome = failStreak >= maxFails ? 'failure_deload' : 'failure'
+                }
                 outcomes.push({ name: setsByExercise.get(exId)!.name, outcome })
               }
 
@@ -309,18 +374,25 @@ async function WorkoutManager({ userId }: { userId: string }) {
                           {exerciseNames.length > 4 && ` +${exerciseNames.length - 4}`}
                         </p>
                         {outcomes.length > 0 && (
-                          <div className="flex gap-1 shrink-0">
-                            {outcomes.map((o, i) => (
-                              <span
-                                key={i}
-                                title={`${o.name}: ${o.outcome}`}
-                                className={`inline-block w-2 h-2 rounded-full ${
-                                  o.outcome === 'success'     ? 'bg-green-400' :
-                                  o.outcome === 'maintenance' ? 'bg-blue-400'  :
-                                                                'bg-red-400'
-                                }`}
-                              />
-                            ))}
+                          <div className="flex items-center gap-1 shrink-0">
+                            {outcomes.map((o, i) => {
+                              if (o.outcome === 'success_increase') return (
+                                <span key={i} title={`${o.name}: success (weight ↑)`}
+                                  className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-green-400" />
+                              )
+                              if (o.outcome === 'failure_deload') return (
+                                <span key={i} title={`${o.name}: failure (deload)`}
+                                  className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-t-[7px] border-l-transparent border-r-transparent border-t-red-400" />
+                              )
+                              if (o.outcome === 'maintenance') return (
+                                <span key={i} title={`${o.name}: maintenance`}
+                                  className="inline-block w-2 h-2 bg-blue-400" />
+                              )
+                              return (
+                                <span key={i} title={`${o.name}: ${o.outcome}`}
+                                  className={`inline-block w-2 h-2 rounded-full ${o.outcome === 'success' ? 'bg-green-400' : 'bg-red-400'}`} />
+                              )
+                            })}
                           </div>
                         )}
                       </div>
@@ -331,7 +403,8 @@ async function WorkoutManager({ userId }: { userId: string }) {
                   </Link>
                 </li>
               )
-            })}
+              })
+            })()}
           </ul>
         )}
       </section>
