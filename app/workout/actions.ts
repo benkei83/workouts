@@ -4,6 +4,31 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { WGER_CATEGORY_MAP, WGER_EQUIPMENT_MAP } from '@/lib/muscleGroups'
+import { runTrophyEngine } from '@/lib/trophies/engine'
+import type { TrophyUnlock } from '@/lib/trophies/types'
+
+// ─── Trophy event helper ──────────────────────────────────────────────────────
+
+/** Silently emits an event row used by the trophy engine for moment-based trophies.
+ *  Swallows all errors so it never breaks the caller's transaction. */
+async function emitTrophyEvent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  eventType: string,
+  opts: { workoutId?: string; exerciseId?: string; value?: number } = {},
+) {
+  try {
+    await supabase.from('user_trophy_events').insert({
+      user_id:     userId,
+      event_type:  eventType,
+      workout_id:  opts.workoutId  ?? null,
+      exercise_id: opts.exerciseId ?? null,
+      value:       opts.value      ?? null,
+    })
+  } catch {
+    // Silently ignore — table may not exist yet, or RLS may block it.
+  }
+}
 
 export async function saveWorkoutNotes(workoutId: string, notes: string) {
   const supabase = await createClient()
@@ -251,6 +276,9 @@ export async function saveStrengthExercise(
 
     // 3. APPLY SETTINGS UPDATE
     if (changed) {
+      const prevWeight = Number(setting.current_weight) || 0
+      const prevFailures = Number(setting.current_failures) || 0
+
       await supabase.from('user_exercise_settings')
         .update({ is_active: false, valid_to: new Date().toISOString() })
         .eq('id', setting.id)
@@ -272,6 +300,25 @@ export async function saveStrengthExercise(
         deload_multiplier: setting.deload_multiplier,
         is_active: true
       })
+
+      // Emit trophy events
+      if (newWeight > prevWeight) {
+        // Successful weight progression
+        const eventType = setting.protocol === 'double' ? 'double_progression' : 'auto_progression'
+        await emitTrophyEvent(supabase, user.id, eventType, {
+          workoutId,
+          exerciseId,
+          value: newWeight,
+        })
+      }
+      if (prevFailures > 0 && newFailures === 0 && newWeight >= prevWeight) {
+        // Broke a failure streak without deloading
+        await emitTrophyEvent(supabase, user.id, 'failure_streak_broken', {
+          workoutId,
+          exerciseId,
+          value: prevFailures,
+        })
+      }
     }
   }
 
@@ -355,13 +402,15 @@ export async function finishWorkout(formData: FormData) {
  * Finish a workout and optionally save feel_rating + intensity.
  * Called from the client-side FinishWorkoutButton (does NOT redirect —
  * the client handles navigation via useRouter).
+ * Returns any newly-unlocked trophies so the client can show toasts.
  */
 export async function finishWorkoutWithFeel(
   workoutId: string,
   feelRating: number | null,
   intensity: string | null,
-) {
+): Promise<{ success: true; newTrophies: TrophyUnlock[] }> {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
   const { data: workout } = await supabase
     .from('workouts')
@@ -380,9 +429,20 @@ export async function finishWorkoutWithFeel(
       .eq('id', workoutId)
   }
 
+  // Run trophy engine (after duration is set so the workout counts as completed)
+  let newTrophies: TrophyUnlock[] = []
+  if (user) {
+    try {
+      newTrophies = await runTrophyEngine(supabase, user.id, workoutId)
+    } catch (err) {
+      console.error('[trophy engine]', err)
+      // Never let trophy errors block finishing a workout
+    }
+  }
+
   revalidatePath('/')
   revalidatePath(`/workout/${workoutId}`)
-  return { success: true }
+  return { success: true, newTrophies }
 }
 
 /** Update feel_rating + intensity on an already-finished workout. */

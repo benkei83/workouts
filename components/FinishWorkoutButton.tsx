@@ -4,19 +4,34 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { finishWorkoutWithFeel } from '@/app/workout/actions'
 import WorkoutFeelModal from '@/components/WorkoutFeelModal'
+import TrophyToast from '@/components/TrophyToast'
 import type { Intensity } from '@/components/WorkoutFeelModal'
+import type { TrophyUnlock } from '@/lib/trophies/types'
 
 export default function FinishWorkoutButton({ workoutId }: { workoutId: string }) {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [pendingTrophies, setPendingTrophies] = useState<TrophyUnlock[]>([])
 
   const handleFinish = (rating: number | null, intensity: Intensity | null) => {
+    setShowModal(false)
     startTransition(async () => {
-      await finishWorkoutWithFeel(workoutId, rating, intensity)
-      router.refresh()
-      router.push('/')
+      const result = await finishWorkoutWithFeel(workoutId, rating, intensity)
+      if (result.newTrophies && result.newTrophies.length > 0) {
+        // Show trophies first; navigation happens after they're dismissed
+        setPendingTrophies(result.newTrophies)
+      } else {
+        router.refresh()
+        router.push('/')
+      }
     })
+  }
+
+  const handleTrophiesDone = () => {
+    setPendingTrophies([])
+    router.refresh()
+    router.push('/')
   }
 
   return (
@@ -38,6 +53,13 @@ export default function FinishWorkoutButton({ workoutId }: { workoutId: string }
           isPending={isPending}
           onSubmit={handleFinish}
           onSkip={() => handleFinish(null, null)}
+        />
+      )}
+
+      {pendingTrophies.length > 0 && (
+        <TrophyToast
+          trophies={pendingTrophies}
+          onDone={handleTrophiesDone}
         />
       )}
     </>

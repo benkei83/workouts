@@ -539,6 +539,23 @@ export function InteractiveCanvas({
         />
       )}
 
+      {/* 2c. TROPHIES LINK (finished workouts only) */}
+      {isFinished && (
+        <Link
+          href="/trophies"
+          className="flex items-center justify-between bg-white rounded-xl border border-yellow-200 shadow-sm px-4 py-3 hover:border-yellow-400 transition-colors group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🏆</span>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Your Trophies</p>
+              <p className="text-xs text-gray-400 font-medium">See all achievements you've unlocked</p>
+            </div>
+          </div>
+          <span className="text-gray-400 group-hover:text-gray-600 font-bold transition-colors">→</span>
+        </Link>
+      )}
+
       {/* 3. MODULE BUTTONS */}
       {activeModule === 'none' && (
         <>
