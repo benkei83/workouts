@@ -329,6 +329,58 @@ export async function finishWorkout(formData: FormData) {
   redirect('/')
 }
 
+/**
+ * Finish a workout and optionally save feel_rating + intensity.
+ * Called from the client-side FinishWorkoutButton (does NOT redirect —
+ * the client handles navigation via useRouter).
+ */
+export async function finishWorkoutWithFeel(
+  workoutId: string,
+  feelRating: number | null,
+  intensity: string | null,
+) {
+  const supabase = await createClient()
+
+  const { data: workout } = await supabase
+    .from('workouts')
+    .select('created_at')
+    .eq('id', workoutId)
+    .single()
+
+  if (workout) {
+    const durationMins = Math.max(
+      1,
+      Math.round((Date.now() - new Date(workout.created_at).getTime()) / 60_000)
+    )
+    await supabase
+      .from('workouts')
+      .update({ total_duration_mins: durationMins, feel_rating: feelRating, intensity })
+      .eq('id', workoutId)
+  }
+
+  revalidatePath('/')
+  revalidatePath(`/workout/${workoutId}`)
+  return { success: true }
+}
+
+/** Update feel_rating + intensity on an already-finished workout. */
+export async function saveWorkoutFeel(
+  workoutId: string,
+  feelRating: number | null,
+  intensity: string | null,
+) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('workouts')
+    .update({ feel_rating: feelRating, intensity })
+    .eq('id', workoutId)
+
+  if (error) return { error: 'Failed to save feel rating' }
+  revalidatePath(`/workout/${workoutId}`)
+  revalidatePath('/')
+  return { success: true }
+}
+
 export async function deleteWorkout(workoutId: string) {
   const supabase = await createClient()
   

@@ -3,9 +3,9 @@ import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { InteractiveCanvas } from './InteractiveCanvas'
-import { finishWorkout } from '../actions'
 import WorkoutOptions from '@/components/WorkoutOptions'
 import WorkoutSubtitle from '@/components/WorkoutSubtitle'
+import FinishWorkoutButton from '@/components/FinishWorkoutButton'
 import { computeExerciseStreak } from '@/lib/streaks'
 
 // ==========================================
@@ -204,17 +204,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         </div>
         
         <div className="flex items-center gap-2 flex-shrink-0">
-          {!isFinished && (
-            <form action={finishWorkout}>
-              <input type="hidden" name="workout_id" value={workout.id} />
-              <button 
-                type="submit" 
-                className="bg-green-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-green-600 transition-colors shadow-sm active:scale-95"
-              >
-                Finish
-              </button>
-            </form>
-          )}
+          {!isFinished && <FinishWorkoutButton workoutId={workout.id} />}
           <WorkoutOptions workoutId={workout.id} currentTitle={workout.title} />
         </div>
       </header>
@@ -230,6 +220,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           supersetTemplates={(supersetTemplates as any) || []}
           isFinished={isFinished}
           durationMins={workout.total_duration_mins ?? 0}
+          feelRating={(workout as any).feel_rating ?? null}
+          intensity={(workout as any).intensity ?? null}
         />
       </div>
     </>

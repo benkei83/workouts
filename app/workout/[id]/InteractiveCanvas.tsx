@@ -13,6 +13,7 @@ import MaintenanceBadge from '@/components/MaintenanceBadge'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import Link from 'next/link'
 import WorkoutStatsPanel from '@/components/stats/WorkoutStatsPanel'
+import WorkoutFeelEditor from '@/components/WorkoutFeelEditor'
 
 type StrengthCard = {
   logId: string
@@ -59,6 +60,8 @@ export function InteractiveCanvas({
   supersetTemplates = [],
   isFinished = false,
   durationMins = 0,
+  feelRating = null,
+  intensity = null,
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -69,6 +72,8 @@ export function InteractiveCanvas({
   supersetTemplates: SupersetTemplate[]
   isFinished?: boolean
   durationMins?: number
+  feelRating?: number | null
+  intensity?: string | null
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
@@ -266,7 +271,16 @@ export function InteractiveCanvas({
   return (
     <div className={`space-y-6 transition-opacity duration-200 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
 
-      {/* 0. STALE-OP RECOVERY BANNER */}
+      {/* 0a. FEEL EDITOR (finished workouts) */}
+      {isFinished && (
+        <WorkoutFeelEditor
+          workoutId={workoutId}
+          initialFeelRating={feelRating}
+          initialIntensity={intensity}
+        />
+      )}
+
+      {/* 0b. STALE-OP RECOVERY BANNER */}
       {staleOps.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-amber-700">
