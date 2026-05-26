@@ -12,6 +12,7 @@ import SuccessBadge from '@/components/SuccessBadge'
 import MaintenanceBadge from '@/components/MaintenanceBadge'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import Link from 'next/link'
+import WorkoutStatsPanel from '@/components/stats/WorkoutStatsPanel'
 
 type StrengthCard = {
   logId: string
@@ -56,6 +57,8 @@ export function InteractiveCanvas({
   programs = [],
   activeProgram = null,
   supersetTemplates = [],
+  isFinished = false,
+  durationMins = 0,
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -64,6 +67,8 @@ export function InteractiveCanvas({
   programs: Program[]
   activeProgram: ActiveProgram
   supersetTemplates: SupersetTemplate[]
+  isFinished?: boolean
+  durationMins?: number
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
@@ -496,6 +501,16 @@ export function InteractiveCanvas({
             )
           })}
         </div>
+      )}
+
+      {/* 2b. WORKOUT STATS (finished workouts only) */}
+      {isFinished && (
+        <WorkoutStatsPanel
+          strengthLogs={initialStrengthLogs}
+          runningLogs={initialRunningLogs}
+          exercises={exercises}
+          durationMins={durationMins}
+        />
       )}
 
       {/* 3. MODULE BUTTONS */}

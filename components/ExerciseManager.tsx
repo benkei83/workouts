@@ -1,15 +1,18 @@
 'use client'
 
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useTransition, useMemo, useEffect } from 'react'
 import {
   createCustomExercise,
   updateExerciseSettings,
   updateExerciseMeta,
   deleteExercise,
 } from '@/app/workout/actions'
+import { fetchExerciseHistory } from '@/app/exercises/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import WgerBrowseModal, { type WgerItem } from '@/components/WgerBrowseModal'
+import ExerciseStatsPanel from '@/components/stats/ExerciseStatsPanel'
 import { MUSCLE_GROUPS, EQUIPMENT_LABELS } from '@/lib/muscleGroups'
+import type { ExerciseHistorySession } from '@/lib/stats/compute'
 
 type Exercise = {
   id: string
@@ -61,6 +64,18 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null)
   const [isWgerOpen, setIsWgerOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [exerciseHistory, setExerciseHistory] = useState<ExerciseHistorySession[] | null>(null)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+
+  // Fetch history whenever the modal opens for a different exercise
+  useEffect(() => {
+    if (!editingExercise) { setExerciseHistory(null); return }
+    setExerciseHistory(null)
+    setIsLoadingHistory(true)
+    fetchExerciseHistory(editingExercise.id)
+      .then(h => setExerciseHistory(h))
+      .finally(() => setIsLoadingHistory(false))
+  }, [editingExercise?.id])
 
   const libraryNames = useMemo(
     () => new Set(exercises.map(e => e.name.toLowerCase())),
@@ -273,6 +288,24 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
               <button onClick={() => setEditingExercise(null)} className="text-gray-400 font-bold p-2 mt-[-4px]">✕</button>
             </div>
             <div className="px-6 py-5 space-y-6">
+
+              {/* Stats */}
+              <div>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Stats</p>
+                {isLoadingHistory ? (
+                  <div className="animate-pulse space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-16 bg-gray-100 rounded-xl" />
+                      ))}
+                    </div>
+                    <div className="h-44 bg-gray-100 rounded-xl" />
+                  </div>
+                ) : exerciseHistory !== null ? (
+                  <ExerciseStatsPanel history={exerciseHistory} />
+                ) : null}
+              </div>
+
               {/* Tags */}
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Tags</p>

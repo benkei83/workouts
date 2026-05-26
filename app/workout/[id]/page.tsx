@@ -59,7 +59,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 // 1. Fetch the raw exercises (user's own library only)
   const { data: allExercisesRaw } = await supabase
     .from('exercises')
-    .select('id, name')
+    .select('id, name, muscle_group')
     .eq('category', 'strength')
     .eq('user_id', user.id)
     .order('name')
@@ -228,6 +228,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           programs={(programs as any) || []}
           activeProgram={activeProgram || null}
           supersetTemplates={(supersetTemplates as any) || []}
+          isFinished={isFinished}
+          durationMins={workout.total_duration_mins ?? 0}
         />
       </div>
     </>
