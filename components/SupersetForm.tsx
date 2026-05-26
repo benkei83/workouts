@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
@@ -88,6 +88,39 @@ export default function SupersetForm({
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
   const [templateName, setTemplateName] = useState('')
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+
+  // ── Set-completion checkboxes + rest timer ───────────────
+  const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
+  const [restStartTime, setRestStartTime] = useState<number | null>(null)
+  const [restSeconds, setRestSeconds] = useState(0)
+
+  useEffect(() => {
+    if (restStartTime === null) return
+    const interval = setInterval(() => {
+      setRestSeconds(Math.floor((Date.now() - restStartTime) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [restStartTime])
+
+  const formatRestTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  const toggleSetChecked = (index: number) => {
+    setCheckedSets(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+        setRestStartTime(Date.now())
+        setRestSeconds(0)
+      }
+      return next
+    })
+  }
 
   // ── TEMPLATE MANAGE STATE ─────────────────────────────────
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -337,9 +370,31 @@ export default function SupersetForm({
       {/* ── LOGGING / EDIT MODE ── */}
       {mode === 'logging' && (
         <div className="space-y-6">
-          {Array.from({ length: numSets }).map((_, setIndex) => (
-            <div key={setIndex} className="bg-gray-900 rounded-2xl p-4 shadow-inner space-y-3">
-              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center mb-2">Set {setIndex + 1}</h4>
+          {/* Rest timer */}
+          {checkedSets.size > 0 && (
+            <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+              <div>
+                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
+                <p className="text-3xl font-extrabold text-blue-600 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
+              </div>
+              <span className="text-3xl">⏱️</span>
+            </div>
+          )}
+
+          {Array.from({ length: numSets }).map((_, setIndex) => {
+            const isChecked = checkedSets.has(setIndex)
+            return (
+            <div key={setIndex} className={`rounded-2xl p-4 shadow-inner space-y-3 transition-colors ${isChecked ? 'bg-gray-800 ring-1 ring-green-500/30' : 'bg-gray-900'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${isChecked ? 'text-green-400' : 'text-gray-400'}`}>Set {setIndex + 1}</h4>
+                <button
+                  type="button"
+                  onClick={() => toggleSetChecked(setIndex)}
+                  className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-xs transition-all active:scale-95 ${
+                    isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-gray-800 border-gray-600 text-gray-600'
+                  }`}
+                >✓</button>
+              </div>
 
               {activeIds.map((exId, exIndex) => {
                 const rowIncrement = getIncrement(exId)
@@ -391,7 +446,8 @@ export default function SupersetForm({
                 )
               })}
             </div>
-          ))}
+          )
+          })}
 
           <div className="flex gap-2">
             {!isEditing && (
