@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { saveStrengthExercise, saveSupersetLog, advanceRotation } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
@@ -101,6 +101,40 @@ export default function ProgramGuide({
   const [skipped, setSkipped] = useState<Set<number>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // ── Set-completion checkboxes + rest timer ───────────────
+  const [checkedSetsPerStep, setCheckedSetsPerStep] = useState<Record<number, Set<number>>>({})
+  const [restStartTime, setRestStartTime] = useState<number | null>(null)
+  const [restSeconds, setRestSeconds] = useState(0)
+
+  useEffect(() => {
+    if (restStartTime === null) return
+    const interval = setInterval(() => {
+      setRestSeconds(Math.floor((Date.now() - restStartTime) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [restStartTime])
+
+  const formatRestTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  const toggleSetChecked = (index: number) => {
+    setCheckedSetsPerStep(prev => {
+      const prevSet = new Set(prev[step] ?? [])
+      if (prevSet.has(index)) {
+        prevSet.delete(index)
+      } else {
+        prevSet.add(index)
+        // Restart rest timer on each new check
+        setRestStartTime(Date.now())
+        setRestSeconds(0)
+      }
+      return { ...prev, [step]: prevSet }
+    })
+  }
+
   // ── Derived values ───────────────────────────────────────
 
   const currentPE = programExercises[step]
@@ -174,6 +208,8 @@ export default function ProgramGuide({
         [target]: prev[target] ?? buildSets(targetPE?.exercise_id),
       }))
     }
+    setRestStartTime(null)
+    setRestSeconds(0)
     setStep(target)
   }
 
@@ -306,39 +342,64 @@ export default function ProgramGuide({
                 </>
               )
             })()}
+            {/* Rest timer — appears when any set is checked */}
+            {(checkedSetsPerStep[step]?.size ?? 0) > 0 && (
+              <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
+                  <p className="text-3xl font-extrabold text-blue-600 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
+                </div>
+                <span className="text-3xl">⏱️</span>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {currentSets.map((set, i) => (
-                <div key={i} className="flex items-center justify-between gap-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative group">
-                  {currentSets.length > 1 && (
+              {currentSets.map((set, i) => {
+                const isChecked = checkedSetsPerStep[step]?.has(i) ?? false
+                return (
+                  <div key={i} className={`flex items-center justify-between gap-1 p-2 rounded-xl border relative group transition-colors ${isChecked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
+                    {currentSets.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeSet(i)}
+                        className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm"
+                      >✕</button>
+                    )}
+                    <div className={`font-bold w-4 text-center text-sm transition-colors ${isChecked ? 'text-green-400' : 'text-gray-400'}`}>{i + 1}</div>
+
+                    <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                      <button type="button" onClick={() => updateSet(i, 'weight', -increment)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                      <div className="text-center w-12 leading-tight">
+                        <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
+                      </div>
+                      <button type="button" onClick={() => updateSet(i, 'weight', increment)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                    </div>
+
+                    <div className="text-gray-300 font-bold text-sm px-1">×</div>
+
+                    <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                      <button type="button" onClick={() => updateSet(i, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                      <div className="text-center w-10 leading-tight">
+                        <div className="font-bold text-gray-900">{set.reps}</div>
+                        <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
+                      </div>
+                      <button type="button" onClick={() => updateSet(i, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                    </div>
+
+                    {/* Set-complete checkbox */}
                     <button
                       type="button"
-                      onClick={() => removeSet(i)}
-                      className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm"
-                    >✕</button>
-                  )}
-                  <div className="font-bold text-gray-400 w-4 text-center text-sm">{i + 1}</div>
-
-                  <div className="flex items-center bg-white rounded-lg border border-gray-200">
-                    <button type="button" onClick={() => updateSet(i, 'weight', -increment)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-                    <div className="text-center w-12 leading-tight">
-                      <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
-                      <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
-                    </div>
-                    <button type="button" onClick={() => updateSet(i, 'weight', increment)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+                      onClick={() => toggleSetChecked(i)}
+                      className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-sm transition-all active:scale-95 ${
+                        isChecked
+                          ? 'bg-green-500 border-green-500 text-white shadow-sm'
+                          : 'bg-white border-gray-200 text-gray-200'
+                      }`}
+                    >✓</button>
                   </div>
-
-                  <div className="text-gray-300 font-bold text-sm px-1">×</div>
-
-                  <div className="flex items-center bg-white rounded-lg border border-gray-200">
-                    <button type="button" onClick={() => updateSet(i, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-                    <div className="text-center w-10 leading-tight">
-                      <div className="font-bold text-gray-900">{set.reps}</div>
-                      <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
-                    </div>
-                    <button type="button" onClick={() => updateSet(i, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <button
@@ -354,13 +415,34 @@ export default function ProgramGuide({
         {/* ── Superset matrix ── */}
         {isSuperset && (
           <div className="space-y-3">
+            {/* Rest timer */}
+            {(checkedSetsPerStep[step]?.size ?? 0) > 0 && (
+              <div className="flex items-center justify-between bg-blue-950 border border-blue-800 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
+                  <p className="text-3xl font-extrabold text-blue-300 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
+                </div>
+                <span className="text-3xl">⏱️</span>
+              </div>
+            )}
             {/* How many sets does the first exercise have? */}
             {(() => {
               const firstExId = supersetExercises[0]?.exercise_id
               const numSets = (currentMatrix[firstExId] || []).length || 3
-              return Array.from({ length: numSets }).map((_, setIndex) => (
-                <div key={setIndex} className="bg-gray-900 rounded-2xl p-4 space-y-3">
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Set {setIndex + 1}</h4>
+              return Array.from({ length: numSets }).map((_, setIndex) => {
+                const isSetChecked = checkedSetsPerStep[step]?.has(setIndex) ?? false
+                return (
+                <div key={setIndex} className={`rounded-2xl p-4 space-y-3 transition-colors ${isSetChecked ? 'bg-gray-800 ring-1 ring-green-500/30' : 'bg-gray-900'}`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${isSetChecked ? 'text-green-400' : 'text-gray-400'}`}>Set {setIndex + 1}</h4>
+                    <button
+                      type="button"
+                      onClick={() => toggleSetChecked(setIndex)}
+                      className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-xs transition-all active:scale-95 ${
+                        isSetChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-gray-800 border-gray-600 text-gray-600'
+                      }`}
+                    >✓</button>
+                  </div>
                   {supersetExercises.map((te, exIdx) => {
                     const ex = exercises.find(e => e.id === te.exercise_id)
                     const exIncrement = ex?.increment_step || ex?.settings?.increment_step || 2.5
@@ -408,7 +490,8 @@ export default function ProgramGuide({
                     )
                   })}
                 </div>
-              ))
+              )
+              })
             })()}
           </div>
         )}

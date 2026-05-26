@@ -166,6 +166,15 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  // Include the current (active) workout's already-logged sets in streak computation.
+  // Without this, a successful deload today would still show the previous failure streak
+  // because recentWorkouts excludes the active workout.
+  const currentWorkoutForStreak = { id: workout.id }
+  const currentWorkoutLogsForStreak = (workout.strength_logs || []).map((log: any) => ({
+    workout_id: workout.id,
+    strength_sets: log.strength_sets || [],
+  }))
+
   // Merge lastSession + log-computed streak into allExercises
   const allExercisesWithHistory = allExercises.map(ex => ({
     ...ex,
@@ -173,8 +182,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     computedStreak: computeExerciseStreak(
       ex.id,
       ex.settings,
-      recentWorkouts || [],
-      recentLogs
+      [currentWorkoutForStreak, ...(recentWorkouts || [])],
+      [...currentWorkoutLogsForStreak, ...recentLogs]
     ),
   }))
 

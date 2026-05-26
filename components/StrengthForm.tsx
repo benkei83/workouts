@@ -48,6 +48,39 @@ export default function StrengthForm({
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
   const [isWgerOpen, setIsWgerOpen] = useState(false)
 
+  // ── Set-completion checkboxes + rest timer ───────────────
+  const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
+  const [restStartTime, setRestStartTime] = useState<number | null>(null)
+  const [restSeconds, setRestSeconds] = useState(0)
+
+  useEffect(() => {
+    if (restStartTime === null) return
+    const interval = setInterval(() => {
+      setRestSeconds(Math.floor((Date.now() - restStartTime) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [restStartTime])
+
+  const formatRestTime = (s: number) => {
+    const m = Math.floor(s / 60)
+    const sec = s % 60
+    return `${m}:${sec.toString().padStart(2, '0')}`
+  }
+
+  const toggleSetChecked = (index: number) => {
+    setCheckedSets(prev => {
+      const next = new Set(prev)
+      if (next.has(index)) {
+        next.delete(index)
+      } else {
+        next.add(index)
+        setRestStartTime(Date.now())
+        setRestSeconds(0)
+      }
+      return next
+    })
+  }
+
   const libraryNames = new Set(exerciseList.map(e => e.name.toLowerCase()))
 
   // Initialize state from existing data OR the active exercise's default settings
@@ -266,35 +299,57 @@ export default function StrengthForm({
         )}
       </div>
 
-      <div className="space-y-3 mb-6">
-        {sets.map((set, index) => (
-          <div key={index} className="flex items-center justify-between gap-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative group">
-            {sets.length > 1 && (
-              <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>
-            )}
-            <div className="font-bold text-gray-400 w-4 text-center text-sm">{index + 1}</div>
-            
-            <div className="flex items-center bg-white rounded-lg border border-gray-200">
-              <button type="button" onClick={() => updateSet(index, 'weight', -currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-              <div className="text-center w-12 leading-tight">
-                <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
-                <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
-              </div>
-              <button type="button" onClick={() => updateSet(index, 'weight', currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
-            </div>
-
-            <div className="text-gray-300 font-bold text-sm px-1">×</div>
-
-            <div className="flex items-center bg-white rounded-lg border border-gray-200">
-              <button type="button" onClick={() => updateSet(index, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
-              <div className="text-center w-10 leading-tight">
-                <div className="font-bold text-gray-900">{set.reps}</div>
-                <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
-              </div>
-              <button type="button" onClick={() => updateSet(index, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
-            </div>
+      {/* Rest timer */}
+      {checkedSets.size > 0 && (
+        <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-3">
+          <div>
+            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
+            <p className="text-3xl font-extrabold text-blue-600 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
           </div>
-        ))}
+          <span className="text-3xl">⏱️</span>
+        </div>
+      )}
+
+      <div className="space-y-3 mb-6">
+        {sets.map((set, index) => {
+          const isChecked = checkedSets.has(index)
+          return (
+            <div key={index} className={`flex items-center justify-between gap-1 p-2 rounded-xl border relative group transition-colors ${isChecked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
+              {sets.length > 1 && (
+                <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>
+              )}
+              <div className={`font-bold w-4 text-center text-sm transition-colors ${isChecked ? 'text-green-400' : 'text-gray-400'}`}>{index + 1}</div>
+
+              <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                <button type="button" onClick={() => updateSet(index, 'weight', -currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                <div className="text-center w-12 leading-tight">
+                  <div className="font-bold text-gray-900">{Number(set.weight.toFixed(2))}</div>
+                  <div className="text-[10px] text-gray-400 font-semibold uppercase">kg</div>
+                </div>
+                <button type="button" onClick={() => updateSet(index, 'weight', currentIncrement)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+              </div>
+
+              <div className="text-gray-300 font-bold text-sm px-1">×</div>
+
+              <div className="flex items-center bg-white rounded-lg border border-gray-200">
+                <button type="button" onClick={() => updateSet(index, 'reps', -1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-l-lg">-</button>
+                <div className="text-center w-10 leading-tight">
+                  <div className="font-bold text-gray-900">{set.reps}</div>
+                  <div className="text-[10px] text-gray-400 font-semibold uppercase">reps</div>
+                </div>
+                <button type="button" onClick={() => updateSet(index, 'reps', 1)} className="w-9 h-10 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100 rounded-r-lg">+</button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => toggleSetChecked(index)}
+                className={`w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-sm transition-all active:scale-95 ${
+                  isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-200'
+                }`}
+              >✓</button>
+            </div>
+          )
+        })}
       </div>
 
       <button type="button" onClick={addSet} className="w-full border-2 border-dashed border-gray-200 text-gray-500 font-bold rounded-xl py-3 mb-4 hover:border-black transition-colors">
