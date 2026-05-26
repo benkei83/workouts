@@ -12,6 +12,34 @@ export function estimateOneRM(weight: number, reps: number): number {
   return Math.round(weight * (1 + reps / 30))
 }
 
+// ── Best Set ──────────────────────────────────────────────────────────────────
+
+export type BestSetMethod = '1rm' | 'volume'
+
+/**
+ * Determine which "best set" method to use for a given exercise.
+ * target_reps < 10  → 1RM-based
+ * target_reps >= 10 → volume-based (weight × reps)
+ * null              → default to 1RM, flag hasNoSettings = true
+ */
+export function getBestSetMethod(targetReps: number | null | undefined): {
+  method: BestSetMethod
+  hasNoSettings: boolean
+} {
+  if (targetReps == null) return { method: '1rm', hasNoSettings: true }
+  return { method: targetReps >= 10 ? 'volume' : '1rm', hasNoSettings: false }
+}
+
+/** The actual individual set that constitutes the "best" for an exercise. */
+export type ExerciseBestSet = {
+  weight: number
+  reps: number
+  estimatedOneRM: number    // Epley (equals weight when reps === 1)
+  singleSetVolume: number   // weight × reps
+  date: string              // ISO timestamp of the workout
+  isActual1rm: boolean      // true when reps === 1 (no estimation involved)
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type RawStrengthSet = {
@@ -161,6 +189,9 @@ export type ExerciseHistorySession = {
   sets: number
   avgReps: number
   estimatedOneRM: number
+  // The actual set that produced the session's best 1RM / best volume (optional — added in v2)
+  best1rmSet?: { weight: number; reps: number; estimatedOneRM: number }
+  bestVolumeSet?: { weight: number; reps: number; volume: number }
 }
 
 export type ExerciseStats = {
@@ -170,6 +201,8 @@ export type ExerciseStats = {
   totalVolume: number          // all-time sum
   weightTrend: 'up' | 'flat' | 'down'
   recentHistory: ExerciseHistorySession[]   // sorted oldest→newest, up to 50
+  best1rmSet: ExerciseBestSet | null        // all-time best individual set by 1RM
+  bestVolumeSet: ExerciseBestSet | null     // all-time best individual set by volume
 }
 
 export function computeExerciseStats(history: ExerciseHistorySession[]): ExerciseStats {
@@ -177,6 +210,7 @@ export function computeExerciseStats(history: ExerciseHistorySession[]): Exercis
     return {
       allTimePR: 0, bestEstimatedOneRM: 0, totalSessions: 0,
       totalVolume: 0, weightTrend: 'flat', recentHistory: [],
+      best1rmSet: null, bestVolumeSet: null,
     }
   }
 
@@ -188,6 +222,39 @@ export function computeExerciseStats(history: ExerciseHistorySession[]): Exercis
   const bestEstimatedOneRM = Math.max(...sorted.map(h => h.estimatedOneRM))
   const totalSessions = sorted.length
   const totalVolume = sorted.reduce((s, h) => s + h.totalVolume, 0)
+
+  // Find all-time best individual sets across all sessions
+  let best1rmSet: ExerciseBestSet | null = null
+  let bestVolumeSet: ExerciseBestSet | null = null
+
+  for (const session of sorted) {
+    if (session.best1rmSet) {
+      const s = session.best1rmSet
+      if (!best1rmSet || s.estimatedOneRM > best1rmSet.estimatedOneRM) {
+        best1rmSet = {
+          weight: s.weight,
+          reps: s.reps,
+          estimatedOneRM: s.estimatedOneRM,
+          singleSetVolume: s.weight * s.reps,
+          date: session.workoutDate,
+          isActual1rm: s.reps === 1,
+        }
+      }
+    }
+    if (session.bestVolumeSet) {
+      const s = session.bestVolumeSet
+      if (!bestVolumeSet || s.volume > bestVolumeSet.singleSetVolume) {
+        bestVolumeSet = {
+          weight: s.weight,
+          reps: s.reps,
+          estimatedOneRM: estimateOneRM(s.weight, s.reps),
+          singleSetVolume: s.volume,
+          date: session.workoutDate,
+          isActual1rm: false, // volume method doesn't distinguish actual vs. estimated
+        }
+      }
+    }
+  }
 
   // Trend: compare average weight of last 3 sessions vs the 3 before that
   const weights = sorted.map(h => h.maxWeight)
@@ -209,5 +276,120 @@ export function computeExerciseStats(history: ExerciseHistorySession[]): Exercis
     totalVolume: Math.round(totalVolume),
     weightTrend,
     recentHistory: sorted.slice(-50),
+    best1rmSet,
+    bestVolumeSet,
   }
+}
+
+// ── Session Best Sets (WorkoutStatsPanel — Section A) ─────────────────────────
+
+export type SessionBestSet = {
+  exerciseId: string
+  name: string
+  weight: number
+  reps: number
+  estimatedOneRM: number
+  singleSetVolume: number
+  method: BestSetMethod
+  hasNoSettings: boolean
+  isActual1rm: boolean      // true when reps === 1 and method is 1rm
+}
+
+/**
+ * For each exercise in the workout, find the "best" individual set
+ * using each exercise's configured method (1RM or volume).
+ */
+export function computeSessionBestSets(
+  strengthLogs: { strength_sets: RawStrengthSet[] }[],
+  exercises: ExerciseMeta[],
+  exerciseSettingsMap: Record<string, { target_reps?: number | null } | null>,
+): SessionBestSet[] {
+  // Collect all valid sets grouped by exercise
+  const exSets = new Map<string, { weight: number; reps: number }[]>()
+  for (const log of strengthLogs) {
+    for (const s of log.strength_sets || []) {
+      if (!s.exercise_id) continue
+      const w = Number(s.actual_weight) || 0
+      const r = Number(s.actual_reps) || 0
+      if (w <= 0 || r <= 0) continue
+      if (!exSets.has(s.exercise_id)) exSets.set(s.exercise_id, [])
+      exSets.get(s.exercise_id)!.push({ weight: w, reps: r })
+    }
+  }
+
+  const results: SessionBestSet[] = []
+
+  for (const [exId, sets] of exSets) {
+    const meta = exercises.find(e => e.id === exId)
+    const name = meta?.name || 'Unknown'
+    const settings = exerciseSettingsMap[exId]
+    const { method, hasNoSettings } = getBestSetMethod(settings?.target_reps)
+
+    let bestWeight = 0, bestReps = 0
+
+    if (method === '1rm') {
+      let best1rm = 0
+      for (const s of sets) {
+        const orm = estimateOneRM(s.weight, s.reps)
+        if (orm > best1rm) { best1rm = orm; bestWeight = s.weight; bestReps = s.reps }
+      }
+    } else {
+      let bestVol = 0
+      for (const s of sets) {
+        const vol = s.weight * s.reps
+        if (vol > bestVol) { bestVol = vol; bestWeight = s.weight; bestReps = s.reps }
+      }
+    }
+
+    if (bestWeight <= 0) continue
+
+    results.push({
+      exerciseId: exId,
+      name,
+      weight: bestWeight,
+      reps: bestReps,
+      estimatedOneRM: estimateOneRM(bestWeight, bestReps),
+      singleSetVolume: bestWeight * bestReps,
+      method,
+      hasNoSettings,
+      isActual1rm: method === '1rm' && bestReps === 1,
+    })
+  }
+
+  // Sort by volume descending so the most impressive exercises come first
+  return results.sort((a, b) => b.singleSetVolume - a.singleSetVolume)
+}
+
+// ── Historical Bests (WorkoutStatsPanel — Section B new-record detection) ─────
+
+export type HistoricalBest = {
+  best1rm: number       // best estimated 1RM from any single set in history
+  bestVolume: number    // best single-set volume (weight × reps) in history
+}
+
+/**
+ * Walk through historical logs and return the all-time best 1RM and volume
+ * for each exercise. Use recentLogs (already fetched in page.tsx).
+ */
+export function computeHistoricalBestsFromLogs(
+  logs: { strength_sets: { exercise_id: string; actual_weight: number | null; actual_reps: number | null }[] }[]
+): Record<string, HistoricalBest> {
+  const bests: Record<string, HistoricalBest> = {}
+
+  for (const log of logs) {
+    for (const s of log.strength_sets || []) {
+      const exId = s.exercise_id
+      if (!exId) continue
+      const w = Number(s.actual_weight) || 0
+      const r = Number(s.actual_reps) || 0
+      if (w <= 0 || r <= 0) continue
+      const orm = estimateOneRM(w, r)
+      const vol = w * r
+      if (!bests[exId]) bests[exId] = { best1rm: 0, bestVolume: 0 }
+      if (orm > bests[exId].best1rm) bests[exId].best1rm = orm
+      if (vol > bests[exId].bestVolume) bests[exId].bestVolume = vol
+    }
+  }
+
+  return bests
 }

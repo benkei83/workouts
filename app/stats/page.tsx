@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import StatsClient from '@/components/StatsClient'
+import { estimateOneRM } from '@/lib/stats/compute'
 
 export default function StatsPage() {
   return (
@@ -118,28 +119,63 @@ async function StatsLoader() {
   const streak = computeStreak(workouts.map(w => new Date(w.created_at)))
   const weeklyBuckets = groupByWeek(workouts.map(w => new Date(w.created_at)))
 
+  // ── exercise settings (for Best Set method) ──────────────
+  const { data: settingsRows } = await supabase
+    .from('user_exercise_settings')
+    .select('exercise_id, target_reps')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+
+  const settingsMap: Record<string, number | null> = {}
+  for (const s of settingsRows ?? []) {
+    settingsMap[s.exercise_id] = s.target_reps ?? null
+  }
+
   // ── strength ─────────────────────────────────────────────
   // Build per-exercise aggregates
   type ExSession = { date: string; weight: number; volume: number }
-  type ExAgg = { id: string; name: string; pr: number; totalVolume: number; history: ExSession[] }
+  type BestSetEntry = { weight: number; reps: number; orm: number; date: string }
+  type BestVolEntry = { weight: number; reps: number; volume: number; date: string }
+  type ExAgg = {
+    id: string; name: string; pr: number; totalVolume: number; history: ExSession[]
+    best1rmSet?: BestSetEntry
+    bestVolumeSet?: BestVolEntry
+  }
   const exMap = new Map<string, ExAgg>()
 
   for (const w of workouts) {
     // collect max weight per exercise in this workout session
-    const sessionMax = new Map<string, { weight: number; volume: number; name: string; exId: string }>()
+    const sessionMax = new Map<string, { weight: number; volume: number; name: string }>()
 
     for (const log of (w.strength_logs ?? [])) {
       for (const set of (log.strength_sets ?? [])) {
         const exId = set.exercise_id
         const name = (set.exercises as any)?.name ?? 'Unknown'
-        const vol = (set.actual_weight ?? 0) * (set.actual_reps ?? 0)
+        const weight = Number(set.actual_weight) || 0
+        const reps = Number(set.actual_reps) || 0
+        const vol = weight * reps
+
         const prev = sessionMax.get(exId)
         sessionMax.set(exId, {
-          exId,
           name,
-          weight: Math.max(set.actual_weight ?? 0, prev?.weight ?? 0),
+          weight: Math.max(weight, prev?.weight ?? 0),
           volume: (prev?.volume ?? 0) + vol,
         })
+
+        // Track all-time best 1RM set and volume set per exercise
+        if (weight > 0 && reps > 0) {
+          if (!exMap.has(exId)) {
+            exMap.set(exId, { id: exId, name, pr: 0, totalVolume: 0, history: [] })
+          }
+          const agg = exMap.get(exId)!
+          const orm = estimateOneRM(weight, reps)
+          if (!agg.best1rmSet || orm > agg.best1rmSet.orm) {
+            agg.best1rmSet = { weight, reps, orm, date: w.created_at }
+          }
+          if (!agg.bestVolumeSet || vol > agg.bestVolumeSet.volume) {
+            agg.bestVolumeSet = { weight, reps, volume: Math.round(vol), date: w.created_at }
+          }
+        }
       }
     }
 
@@ -163,6 +199,7 @@ async function StatsLoader() {
       ...e,
       trend: computeTrend(e.history.map(h => h.weight)),
       sessionCount: e.history.length,
+      targetReps: settingsMap[e.id] ?? null,
     }))
 
   // ── cardio ───────────────────────────────────────────────

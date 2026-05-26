@@ -7,6 +7,7 @@ import WorkoutOptions from '@/components/WorkoutOptions'
 import WorkoutSubtitle from '@/components/WorkoutSubtitle'
 import FinishWorkoutButton from '@/components/FinishWorkoutButton'
 import { computeExerciseStreak } from '@/lib/streaks'
+import { computeHistoricalBestsFromLogs } from '@/lib/stats/compute'
 
 // ==========================================
 // THE PAGE SHELL
@@ -187,6 +188,13 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
     ),
   }))
 
+  // Build exercise settings map for WorkoutStatsPanel (Best Set method lookup)
+  const exerciseSettingsMap: Record<string, { target_reps?: number | null } | null> =
+    Object.fromEntries(allExercises.map(ex => [ex.id, ex.settings ? { target_reps: ex.settings.target_reps } : null]))
+
+  // Compute historical bests from the already-fetched recent logs (excludes current workout)
+  const historicalBests = computeHistoricalBestsFromLogs(recentLogs)
+
 
   return (
     <>
@@ -222,6 +230,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           durationMins={workout.total_duration_mins ?? 0}
           feelRating={(workout as any).feel_rating ?? null}
           intensity={(workout as any).intensity ?? null}
+          exerciseSettingsMap={exerciseSettingsMap}
+          historicalBests={historicalBests}
         />
       </div>
     </>

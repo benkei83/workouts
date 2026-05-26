@@ -5,6 +5,7 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts'
+import { getBestSetMethod } from '@/lib/stats/compute'
 
 type ExerciseStat = {
   id: string
@@ -14,6 +15,9 @@ type ExerciseStat = {
   sessionCount: number
   trend: 'up' | 'flat' | 'down'
   history: { date: string; weight: number; volume: number }[]
+  targetReps?: number | null
+  best1rmSet?: { weight: number; reps: number; orm: number; date: string }
+  bestVolumeSet?: { weight: number; reps: number; volume: number; date: string }
 }
 
 type Props = {
@@ -124,7 +128,12 @@ function ConsistencyChart({ buckets }: { buckets: { label: string; count: number
 // ── Exercise drill-down modal ─────────────────────────────────────────────────
 
 function ExerciseModal({ ex, onClose }: { ex: ExerciseStat; onClose: () => void }) {
-  const lastWeight = ex.history.length > 0 ? ex.history[ex.history.length - 1].weight : null
+  const { method, hasNoSettings } = getBestSetMethod(ex.targetReps)
+  const primaryBestSet = method === '1rm'
+    ? ex.best1rmSet
+    : (ex.bestVolumeSet ? { weight: ex.bestVolumeSet.weight, reps: ex.bestVolumeSet.reps, orm: ex.bestVolumeSet.volume, date: ex.bestVolumeSet.date } : ex.best1rmSet)
+  const effectiveMethod = (method === 'volume' && !ex.bestVolumeSet && ex.best1rmSet) ? '1rm' : method
+  const isActual1rm = effectiveMethod === '1rm' && (ex.best1rmSet?.reps === 1)
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
@@ -138,8 +147,45 @@ function ExerciseModal({ ex, onClose }: { ex: ExerciseStat; onClose: () => void 
         </div>
 
         <div className="overflow-y-auto flex-1">
+          {/* Best Set card */}
+          {primaryBestSet ? (
+            <div className="mx-6 mb-4 bg-gray-50 rounded-xl px-4 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Best Set</p>
+                  <p className="text-2xl font-extrabold text-gray-900 leading-tight mt-0.5">
+                    {primaryBestSet.weight}
+                    <span className="text-sm font-normal text-gray-400 ml-0.5">kg</span>
+                    <span className="text-gray-400 mx-2 font-normal text-xl">×</span>
+                    {primaryBestSet.reps}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {effectiveMethod === '1rm'
+                      ? isActual1rm
+                        ? `1RM: ${ex.best1rmSet?.orm ?? 0}kg`
+                        : `Est. 1RM: ${ex.best1rmSet?.orm ?? 0}kg`
+                      : `${ex.bestVolumeSet?.volume ?? 0}kg vol`
+                    }
+                    {' · '}
+                    {new Date(primaryBestSet.date).toLocaleDateString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                    })}
+                  </p>
+                  {hasNoSettings && (
+                    <p className="text-[10px] text-amber-500 mt-1">⚠ No target reps set — using 1RM method</p>
+                  )}
+                </div>
+                <span className={`text-[10px] font-bold rounded-md px-1.5 py-0.5 flex-shrink-0 mt-0.5 ${
+                  isActual1rm ? 'text-amber-600 bg-amber-50' : 'text-gray-400 bg-gray-200'
+                }`}>
+                  {effectiveMethod === '1rm' ? (isActual1rm ? '1RM' : 'EST') : 'VOL'}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           {/* Stat chips */}
-          <div className="grid grid-cols-3 gap-2 px-6 pb-4">
+          <div className="grid grid-cols-2 gap-2 px-6 pb-4">
             <div className="bg-gray-50 rounded-xl p-3 text-center">
               <p className="text-lg font-extrabold text-gray-900">
                 {ex.pr}<span className="text-xs font-normal text-gray-400 ml-0.5">kg</span>
@@ -152,12 +198,6 @@ function ExerciseModal({ ex, onClose }: { ex: ExerciseStat; onClose: () => void 
                 <span className="text-xs font-normal text-gray-400 ml-0.5">kg</span>
               </p>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">Volume</p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 text-center">
-              <p className="text-lg font-extrabold text-gray-900">
-                {lastWeight ?? '—'}<span className="text-xs font-normal text-gray-400 ml-0.5">{lastWeight ? 'kg' : ''}</span>
-              </p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">Last</p>
             </div>
           </div>
 
@@ -279,7 +319,22 @@ export default function StatsClient({
               >
                 <div className="min-w-0">
                   <p className="font-bold text-gray-900 truncate">{ex.name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{ex.sessionCount} sessions • {ex.pr}kg PR</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {ex.sessionCount} sessions · {ex.pr}kg PR
+                    {(() => {
+                      const { method: m } = getBestSetMethod(ex.targetReps)
+                      const bs = m === '1rm' ? ex.best1rmSet : (ex.bestVolumeSet ?? ex.best1rmSet)
+                      if (!bs) return null
+                      const isActual = m === '1rm' && bs.reps === 1
+                      const label = m === 'volume' && ex.bestVolumeSet ? 'vol' : isActual ? '1RM' : 'est'
+                      return (
+                        <span className={`ml-1.5 ${isActual ? 'text-amber-500' : 'text-gray-500'}`}>
+                          · {bs.weight}kg×{bs.reps}
+                          <span className="text-gray-400 ml-0.5">({label})</span>
+                        </span>
+                      )
+                    })()}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 ml-3">
                   <TrendBadge trend={ex.trend} />

@@ -302,7 +302,10 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
                     <div className="h-44 bg-gray-100 rounded-xl" />
                   </div>
                 ) : exerciseHistory !== null ? (
-                  <ExerciseStatsPanel history={exerciseHistory} />
+                  <ExerciseStatsPanel
+                    history={exerciseHistory}
+                    targetReps={editingExercise.settings?.target_reps ?? null}
+                  />
                 ) : null}
               </div>
 

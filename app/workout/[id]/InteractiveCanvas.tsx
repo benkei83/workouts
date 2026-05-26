@@ -62,6 +62,8 @@ export function InteractiveCanvas({
   durationMins = 0,
   feelRating = null,
   intensity = null,
+  exerciseSettingsMap = {},
+  historicalBests = {},
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -74,6 +76,8 @@ export function InteractiveCanvas({
   durationMins?: number
   feelRating?: number | null
   intensity?: string | null
+  exerciseSettingsMap?: Record<string, { target_reps?: number | null } | null>
+  historicalBests?: Record<string, { best1rm: number; bestVolume: number }>
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
@@ -524,6 +528,8 @@ export function InteractiveCanvas({
           runningLogs={initialRunningLogs}
           exercises={exercises}
           durationMins={durationMins}
+          exerciseSettingsMap={exerciseSettingsMap}
+          historicalBests={historicalBests}
         />
       )}
 

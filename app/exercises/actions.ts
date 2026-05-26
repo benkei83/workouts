@@ -77,11 +77,28 @@ export async function fetchExerciseHistory(
     const maxWeight = Math.max(...rawSets.map(s => s.weight))
     const totalVolume = rawSets.reduce((s, set) => s + set.weight * set.reps, 0)
     const avgReps = rawSets.reduce((s, set) => s + set.reps, 0) / rawSets.length
-    const estimatedOneRM = Math.max(
-      ...rawSets.map(s =>
-        s.reps <= 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30))
-      )
-    )
+
+    // Find the set that produced the best estimated 1RM
+    let best1rmSet: { weight: number; reps: number; estimatedOneRM: number } | undefined
+    let topOrm = 0
+    for (const s of rawSets) {
+      const orm = s.reps <= 1 ? s.weight : Math.round(s.weight * (1 + s.reps / 30))
+      if (orm > topOrm) {
+        topOrm = orm
+        best1rmSet = { weight: s.weight, reps: s.reps, estimatedOneRM: orm }
+      }
+    }
+
+    // Find the set that produced the best single-set volume
+    let bestVolumeSet: { weight: number; reps: number; volume: number } | undefined
+    let topVol = 0
+    for (const s of rawSets) {
+      const vol = s.weight * s.reps
+      if (vol > topVol) {
+        topVol = vol
+        bestVolumeSet = { weight: s.weight, reps: s.reps, volume: Math.round(vol) }
+      }
+    }
 
     sessions.push({
       workoutDate: date,
@@ -89,7 +106,9 @@ export async function fetchExerciseHistory(
       totalVolume: Math.round(totalVolume),
       sets: rawSets.length,
       avgReps: Math.round(avgReps * 10) / 10,
-      estimatedOneRM,
+      estimatedOneRM: topOrm,
+      best1rmSet,
+      bestVolumeSet,
     })
   }
 
