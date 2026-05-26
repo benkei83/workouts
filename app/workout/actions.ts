@@ -215,9 +215,28 @@ export async function saveStrengthExercise(
       ? Math.min(...cleanSets.map(s => Number(s.weight)))
       : newWeight
 
+    // Fetch the most-recent inactive settings row to detect a deload recovery.
+    // If the current active weight is lower than the previous row's weight, the
+    // user is mid-deload — a perfect session now counts as deload_recovery.
+    const { data: prevSettingRow } = await supabase
+      .from('user_exercise_settings')
+      .select('current_weight')
+      .eq('user_id', user.id)
+      .eq('exercise_id', exerciseId)
+      .eq('is_active', false)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const wasDeloaded = prevSettingRow !== null
+      && Number(setting.current_weight) < Number(prevSettingRow.current_weight)
+
+    let isPerfectSession = false
+
     if (setting.protocol === 'linear') {
       // 5x5 STYLE
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
+        isPerfectSession = true
         newSuccesses += 1
         newFailures = 0
         if (newSuccesses >= minSuccesses) {
@@ -244,6 +263,7 @@ export async function saveStrengthExercise(
       const allSetsHitMaintain = cleanSets.every(s => Number(s.reps) >= lowerBound)
 
       if (completedSetsCount >= targetSets && allSetsHitTarget) {
+        isPerfectSession = true
         newSuccesses += 1
         newFailures = 0
         if (newSuccesses >= minSuccesses) {
@@ -318,6 +338,19 @@ export async function saveStrengthExercise(
           exerciseId,
           value: prevFailures,
         })
+      }
+      if (isPerfectSession) {
+        await emitTrophyEvent(supabase, user.id, 'perfect_session', {
+          workoutId,
+          exerciseId,
+        })
+        if (wasDeloaded) {
+          // Perfect session while weight is still below the pre-deload peak
+          await emitTrophyEvent(supabase, user.id, 'deload_recovery', {
+            workoutId,
+            exerciseId,
+          })
+        }
       }
     }
   }

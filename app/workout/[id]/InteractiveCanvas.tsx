@@ -15,6 +15,8 @@ import Link from 'next/link'
 import WorkoutStatsPanel from '@/components/stats/WorkoutStatsPanel'
 import WorkoutFeelEditor from '@/components/WorkoutFeelEditor'
 import WorkoutNotes from '@/components/WorkoutNotes'
+import type { UserSettings } from '@/lib/settings'
+import { DEFAULT_USER_SETTINGS } from '@/lib/settings'
 
 type StrengthCard = {
   logId: string
@@ -66,6 +68,7 @@ export function InteractiveCanvas({
   notes = null,
   exerciseSettingsMap = {},
   historicalBests = {},
+  userSettings = DEFAULT_USER_SETTINGS,
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -81,6 +84,7 @@ export function InteractiveCanvas({
   notes?: string | null
   exerciseSettingsMap?: Record<string, { target_reps?: number | null } | null>
   historicalBests?: Record<string, { best1rm: number; bestVolume: number }>
+  userSettings?: UserSettings
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
   const [editData, setEditData] = useState<any>(null)
@@ -354,6 +358,7 @@ export function InteractiveCanvas({
                     exercises={exercises}
                     onCancel={closeForm}
                     editData={editData}
+                    userSettings={userSettings}
                   />
                 )
               }
@@ -406,6 +411,7 @@ export function InteractiveCanvas({
                   supersetTemplates={supersetTemplates}
                   editData={editSupersetData!}
                   onCancel={closeForm}
+                  userSettings={userSettings}
                 />
               )
             }
@@ -608,7 +614,7 @@ export function InteractiveCanvas({
       )}
 
       {activeModule === 'strength' && !editData && (
-        <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} onSave={handleSaveStrength} />
+        <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} onSave={handleSaveStrength} userSettings={userSettings} />
       )}
 
       {activeModule === 'superset' && !editSupersetData && (
@@ -618,6 +624,7 @@ export function InteractiveCanvas({
           supersetTemplates={supersetTemplates}
           onCancel={closeForm}
           onSave={handleSaveSuperset}
+          userSettings={userSettings}
         />
       )}
 

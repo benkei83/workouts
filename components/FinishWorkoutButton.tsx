@@ -8,7 +8,13 @@ import TrophyToast from '@/components/TrophyToast'
 import type { Intensity } from '@/components/WorkoutFeelModal'
 import type { TrophyUnlock } from '@/lib/trophies/types'
 
-export default function FinishWorkoutButton({ workoutId }: { workoutId: string }) {
+export default function FinishWorkoutButton({
+  workoutId,
+  showTrophyToast = true,
+}: {
+  workoutId: string
+  showTrophyToast?: boolean
+}) {
   const router = useRouter()
   const [showModal, setShowModal] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -18,7 +24,7 @@ export default function FinishWorkoutButton({ workoutId }: { workoutId: string }
     setShowModal(false)
     startTransition(async () => {
       const result = await finishWorkoutWithFeel(workoutId, rating, intensity)
-      if (result.newTrophies && result.newTrophies.length > 0) {
+      if (showTrophyToast && result.newTrophies && result.newTrophies.length > 0) {
         // Show trophies first; navigation happens after they're dismissed
         setPendingTrophies(result.newTrophies)
       } else {

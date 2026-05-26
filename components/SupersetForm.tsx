@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
 import MaintenanceBadge from '@/components/MaintenanceBadge'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import type { ComputedStreak } from '@/lib/streaks'
+import RestTimer from '@/components/RestTimer'
+import type { UserSettings } from '@/lib/settings'
+import { DEFAULT_USER_SETTINGS } from '@/lib/settings'
 
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
 type Exercise = {
@@ -50,6 +53,7 @@ export default function SupersetForm({
   editData,
   onCancel,
   onSave,
+  userSettings = DEFAULT_USER_SETTINGS,
 }: {
   workoutId: string
   exercises: Exercise[]
@@ -58,6 +62,7 @@ export default function SupersetForm({
   onCancel: () => void
   /** When provided (new superset flow), the canvas owns the server call. */
   onSave?: (matrix: Record<string, { weight: number; reps: number }[]>, names: Record<string, string>) => void
+  userSettings?: UserSettings
 }) {
   const isEditing = !!editData && editData.length > 0
 
@@ -92,31 +97,16 @@ export default function SupersetForm({
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
   const [restStartTime, setRestStartTime] = useState<number | null>(null)
-  const [restSeconds, setRestSeconds] = useState(0)
-
-  useEffect(() => {
-    if (restStartTime === null) return
-    const interval = setInterval(() => {
-      setRestSeconds(Math.floor((Date.now() - restStartTime) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [restStartTime])
-
-  const formatRestTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
 
   const toggleSetChecked = (index: number) => {
     setCheckedSets(prev => {
       const next = new Set(prev)
       if (next.has(index)) {
         next.delete(index)
+        setRestStartTime(null)
       } else {
         next.add(index)
         setRestStartTime(Date.now())
-        setRestSeconds(0)
       }
       return next
     })
@@ -371,15 +361,11 @@ export default function SupersetForm({
       {mode === 'logging' && (
         <div className="space-y-6">
           {/* Rest timer */}
-          {checkedSets.size > 0 && (
-            <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-              <div>
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
-                <p className="text-3xl font-extrabold text-blue-600 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
-              </div>
-              <span className="text-3xl">⏱️</span>
-            </div>
-          )}
+          <RestTimer
+            startedAt={restStartTime}
+            defaultSecs={userSettings.rest_timer_default_secs}
+            vibrateOnComplete={userSettings.vibrate_on_rest_complete}
+          />
 
           {Array.from({ length: numSets }).map((_, setIndex) => {
             const isChecked = checkedSets.has(setIndex)

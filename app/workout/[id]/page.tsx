@@ -8,6 +8,8 @@ import WorkoutSubtitle from '@/components/WorkoutSubtitle'
 import FinishWorkoutButton from '@/components/FinishWorkoutButton'
 import { computeExerciseStreak } from '@/lib/streaks'
 import { computeHistoricalBestsFromLogs } from '@/lib/stats/compute'
+import { DEFAULT_USER_SETTINGS } from '@/lib/settings'
+import type { UserSettings } from '@/lib/settings'
 
 // ==========================================
 // THE PAGE SHELL
@@ -196,6 +198,25 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
   // Compute historical bests from the already-fetched recent logs (excludes current workout)
   const historicalBests = computeHistoricalBestsFromLogs(recentLogs)
 
+  // Fetch profile settings (rest timer preset, vibration, trophy toasts)
+  // Note: "userSettings" is already taken by the exercise settings destructure above.
+  let profileSettings: UserSettings = { ...DEFAULT_USER_SETTINGS }
+  try {
+    const { data: settingsRow } = await supabase
+      .from('user_settings')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (settingsRow) {
+      profileSettings = {
+        screen_name:              settingsRow.screen_name              ?? null,
+        show_trophy_toasts:       settingsRow.show_trophy_toasts       ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
+        rest_timer_default_secs:  settingsRow.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
+        vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete  ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
+      }
+    }
+  } catch { /* table not migrated yet — use defaults */ }
 
   return (
     <>
@@ -213,7 +234,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         </div>
         
         <div className="flex items-center gap-2 flex-shrink-0">
-          {!isFinished && <FinishWorkoutButton workoutId={workout.id} />}
+          {!isFinished && <FinishWorkoutButton workoutId={workout.id} showTrophyToast={profileSettings.show_trophy_toasts} />}
           <WorkoutOptions workoutId={workout.id} currentTitle={workout.title} />
         </div>
       </header>
@@ -234,6 +255,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           notes={notes}
           exerciseSettingsMap={exerciseSettingsMap}
           historicalBests={historicalBests}
+          userSettings={profileSettings}
         />
       </div>
     </>

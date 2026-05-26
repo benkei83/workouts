@@ -9,6 +9,9 @@ import MaintenanceBadge from '@/components/MaintenanceBadge'
 import WgerBrowseModal, { type WgerItem } from '@/components/WgerBrowseModal'
 import { getDeloadStatus, getSuccessStatus, getMaintenanceStatus } from '@/lib/deload'
 import type { ComputedStreak } from '@/lib/streaks'
+import RestTimer from '@/components/RestTimer'
+import type { UserSettings } from '@/lib/settings'
+import { DEFAULT_USER_SETTINGS } from '@/lib/settings'
 
 type SetData = { weight: number; reps: number; rpe?: number | null }
 type LastSession = { date: string; sets: { weight: number; reps: number }[] }
@@ -29,7 +32,8 @@ export default function StrengthForm({
   initialSets = 5,
   initialReps = 5,
   initialWeight = 60,
-  editData
+  editData,
+  userSettings = DEFAULT_USER_SETTINGS,
 }: {
   workoutId: string,
   exercises: Exercise[],
@@ -39,7 +43,8 @@ export default function StrengthForm({
   initialSets?: number,
   initialReps?: number,
   initialWeight?: number,
-  editData?: any
+  editData?: any,
+  userSettings?: UserSettings,
 }) {
   // Local augmentable copy of exercises — so wger-added ones appear immediately
   const [exerciseList, setExerciseList] = useState(exercises)
@@ -51,31 +56,16 @@ export default function StrengthForm({
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
   const [restStartTime, setRestStartTime] = useState<number | null>(null)
-  const [restSeconds, setRestSeconds] = useState(0)
-
-  useEffect(() => {
-    if (restStartTime === null) return
-    const interval = setInterval(() => {
-      setRestSeconds(Math.floor((Date.now() - restStartTime) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [restStartTime])
-
-  const formatRestTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
 
   const toggleSetChecked = (index: number) => {
     setCheckedSets(prev => {
       const next = new Set(prev)
       if (next.has(index)) {
         next.delete(index)
+        setRestStartTime(null)
       } else {
         next.add(index)
         setRestStartTime(Date.now())
-        setRestSeconds(0)
       }
       return next
     })
@@ -319,15 +309,11 @@ export default function StrengthForm({
       </div>
 
       {/* Rest timer */}
-      {checkedSets.size > 0 && (
-        <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mb-3">
-          <div>
-            <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Rest timer</p>
-            <p className="text-3xl font-extrabold text-blue-600 tabular-nums leading-none mt-0.5">{formatRestTime(restSeconds)}</p>
-          </div>
-          <span className="text-3xl">⏱️</span>
-        </div>
-      )}
+      <RestTimer
+        startedAt={restStartTime}
+        defaultSecs={userSettings.rest_timer_default_secs}
+        vibrateOnComplete={userSettings.vibrate_on_rest_complete}
+      />
 
       <div className="space-y-2 mb-6">
         {sets.map((set, index) => {

@@ -122,6 +122,9 @@ async function Dashboard() {
             <Link href="/trophies" className="text-sm font-bold text-gray-900 hover:text-yellow-600 transition-colors">
               🏆 Trophies
             </Link>
+            <Link href="/settings" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
+              Settings
+            </Link>
             {user?.email === process.env.ADMIN_EMAIL && (
               <Link href="/admin" className="text-sm font-bold text-gray-400 hover:text-gray-700 transition-colors">
                 Admin
