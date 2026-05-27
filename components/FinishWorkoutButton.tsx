@@ -24,6 +24,8 @@ export default function FinishWorkoutButton({
     setShowModal(false)
     startTransition(async () => {
       const result = await finishWorkoutWithFeel(workoutId, rating, intensity)
+      // Signal WorkoutTimer to stop immediately — no router refresh required
+      window.dispatchEvent(new CustomEvent(`workout-finished:${workoutId}`))
       if (showTrophyToast && result.newTrophies && result.newTrophies.length > 0) {
         // Show trophies first; navigation happens after they're dismissed
         setPendingTrophies(result.newTrophies)

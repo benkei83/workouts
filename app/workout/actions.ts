@@ -473,8 +473,10 @@ export async function finishWorkoutWithFeel(
     }
   }
 
-  revalidatePath('/')
-  revalidatePath(`/workout/${workoutId}`)
+  // Do NOT call revalidatePath here — it causes Next.js to refresh the current
+  // page while the trophy toast is still visible, which unmounts FinishWorkoutButton
+  // and clears pendingTrophies. The client already calls router.refresh() before
+  // navigating away, so cache invalidation is handled on the client side.
   return { success: true, newTrophies }
 }
 

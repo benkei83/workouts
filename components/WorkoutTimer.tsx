@@ -12,7 +12,16 @@ export default function WorkoutTimer({
 }) {
   const [elapsed, setElapsed] = useState(0)
   const [showMenu, setShowMenu] = useState(false)
+  const [stopped, setStopped] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Hide immediately when FinishWorkoutButton signals the workout is done
+  useEffect(() => {
+    const eventName = `workout-finished:${workoutId}`
+    const handler = () => setStopped(true)
+    window.addEventListener(eventName, handler)
+    return () => window.removeEventListener(eventName, handler)
+  }, [workoutId])
 
   // Tick every second; honours any localStorage reset point
   useEffect(() => {
@@ -53,6 +62,8 @@ export default function WorkoutTimer({
     setElapsed(0)
     setShowMenu(false)
   }
+
+  if (stopped) return null
 
   const h = Math.floor(elapsed / 3600)
   const m = Math.floor((elapsed % 3600) / 60)

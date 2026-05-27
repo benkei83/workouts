@@ -51,10 +51,9 @@ export default function TrophyToast({ trophies, onDone }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      {/* Backdrop */}
+      {/* Backdrop — intentionally not clickable; dismiss via the card buttons */}
       <div
         className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={skipAll}
       />
 
       {/* Card */}
@@ -67,15 +66,13 @@ export default function TrophyToast({ trophies, onDone }: Props) {
           ${visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}
         `}
       >
-        {/* Skip all */}
-        {trophies.length > 1 && (
-          <button
-            onClick={skipAll}
-            className="absolute top-3 right-3 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            Skip all
-          </button>
-        )}
+        {/* Dismiss / Skip all — always visible */}
+        <button
+          onClick={skipAll}
+          className="absolute top-3 right-3 text-xs text-gray-400 hover:text-gray-600 transition-colors font-semibold"
+        >
+          {trophies.length > 1 ? 'Skip all' : '✕'}
+        </button>
 
         {/* Counter */}
         {trophies.length > 1 && (

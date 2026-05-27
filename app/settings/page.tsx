@@ -30,16 +30,17 @@ async function SettingsContent() {
   try {
     const { data } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, height_cm')
       .eq('user_id', user.id)
       .maybeSingle()
 
     if (data) {
       settings = {
-        screen_name:             data.screen_name             ?? null,
-        show_trophy_toasts:      data.show_trophy_toasts      ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
-        rest_timer_default_secs: data.rest_timer_default_secs ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
+        screen_name:              data.screen_name              ?? null,
+        show_trophy_toasts:       data.show_trophy_toasts       ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
+        rest_timer_default_secs:  data.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
         vibrate_on_rest_complete: data.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
+        height_cm:                data.height_cm != null ? Number(data.height_cm) : null,
       }
     }
   } catch { /* table not migrated yet — use defaults */ }

@@ -119,6 +119,9 @@ async function Dashboard() {
             <Link href="/stats" className="text-sm font-bold text-gray-900 hover:text-green-600 transition-colors">
               Stats
             </Link>
+            <Link href="/weight" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
+              ⚖️ Weight
+            </Link>
             <Link href="/trophies" className="text-sm font-bold text-gray-900 hover:text-yellow-600 transition-colors">
               🏆 Trophies
             </Link>

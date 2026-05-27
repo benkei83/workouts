@@ -67,6 +67,11 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
   const [namePending, startNameTransition] = useTransition()
   const nameSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Body ───────────────────────────────────────────────────────────────────
+  const [heightCm, setHeightCm] = useState<string>(settings.height_cm != null ? String(settings.height_cm) : '')
+  const [heightSaved, setHeightSaved] = useState(false)
+  const [heightPending, startHeightTransition] = useTransition()
+
   // ── Training ───────────────────────────────────────────────────────────────
   const [restSecs, setRestSecs]   = useState<number | null>(settings.rest_timer_default_secs)
   const [vibrate, setVibrate]     = useState(settings.vibrate_on_rest_complete)
@@ -95,6 +100,16 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
       await updateUserSettings({ screen_name: trimmed })
       if (nameSavedTimer.current) clearTimeout(nameSavedTimer.current)
       flash(setNameSaved, nameSavedTimer)
+    })
+  }
+
+  const saveHeight = () => {
+    const parsed = heightCm.trim() ? parseFloat(heightCm) : null
+    const valid = parsed === null || (parsed > 50 && parsed < 280)
+    if (!valid) return
+    startHeightTransition(async () => {
+      await updateUserSettings({ height_cm: parsed })
+      flash(setHeightSaved)
     })
   }
 
@@ -151,6 +166,43 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
               Used in the social feed — coming soon.
             </p>
             <SavedBadge show={nameSaved} />
+          </div>
+        </Row>
+      </Section>
+
+      {/* ── BODY ── */}
+      <Section title="Body">
+        <Row>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">
+            Height
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                value={heightCm}
+                onChange={e => setHeightCm(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && saveHeight()}
+                placeholder="e.g. 178"
+                min={100}
+                max={280}
+                step={0.5}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium pointer-events-none">cm</span>
+            </div>
+            <button
+              type="button"
+              onClick={saveHeight}
+              disabled={heightPending}
+              className="px-4 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-xl hover:bg-gray-700 disabled:opacity-50 transition-colors"
+            >
+              {heightPending ? '…' : 'Save'}
+            </button>
+          </div>
+          <div className="flex items-center gap-2 mt-1.5">
+            <p className="text-xs text-gray-400 flex-1">Used for BMI on the weight tracker.</p>
+            <SavedBadge show={heightSaved} />
           </div>
         </Row>
       </Section>
