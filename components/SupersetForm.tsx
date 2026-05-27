@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
-import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
+import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate, updateExerciseSettings } from '@/app/workout/actions'
+import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
 import MaintenanceBadge from '@/components/MaintenanceBadge'
@@ -17,12 +18,7 @@ type Exercise = {
   id: string
   name: string
   increment_step?: number
-  settings?: {
-    current_weight?: number
-    target_reps?: number
-    target_sets?: number
-    increment_step?: number
-  } | null
+  settings?: any
   lastSession?: LastSession | null
   computedStreak?: ComputedStreak
 }
@@ -118,6 +114,9 @@ export default function SupersetForm({
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null)
+  const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
+  const [settingsOpenForSetIndex, setSettingsOpenForSetIndex] = useState<number | null>(null)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
 
   // ── SETUP HANDLERS ────────────────────────────────────────
   const updateSelectedExercise = (index: number, value: string) => {
@@ -230,6 +229,28 @@ export default function SupersetForm({
     const result = await deleteSupersetTemplate(id)
     setIsDeletingId(null)
     if (result && 'error' in result) alert(`Error: ${result.error}`)
+  }
+
+  const handleSettingsSave = async (exerciseId: string, formData: FormData) => {
+    const ex = exercises.find(e => e.id === exerciseId)
+    setIsSavingSettings(true)
+    await updateExerciseSettings(exerciseId, {
+      sets: parseInt(formData.get('sets') as string) || 3,
+      reps: parseInt(formData.get('reps') as string) || 8,
+      reps_min: parseInt(formData.get('reps_min') as string) || 8,
+      weight: parseFloat(formData.get('weight') as string) || 0,
+      increment: parseFloat(formData.get('increment') as string) || 2.5,
+      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
+      protocol: formData.get('protocol') as string,
+      min_successes: parseInt(formData.get('min_successes') as string) || 1,
+      max_failures: parseInt(formData.get('max_failures') as string) || 3,
+      deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+      current_failures: ex?.settings?.current_failures || 0,
+      current_successes: ex?.settings?.current_successes || 0,
+    })
+    setIsSavingSettings(false)
+    router.refresh()
+    setSettingsOpenFor(null)
   }
 
   // ── RENDER ────────────────────────────────────────────────
@@ -396,42 +417,68 @@ export default function SupersetForm({
                 const deloadStatus = getDeloadStatus(exSettings, exStreak)
                 const successStatus = getSuccessStatus(exSettings, exStreak)
                 const maintenanceStatus = getMaintenanceStatus(exSettings, exStreak)
+                const isSettingsOpen = settingsOpenFor === exId && settingsOpenForSetIndex === setIndex
 
                 return (
-                  <div key={exId} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
-                    <div className="w-1/3 pr-2 min-w-0">
-                      <div className="text-xs font-bold text-white truncate">
-                        <span className="text-gray-500 mr-2">{String.fromCharCode(65 + exIndex)}</span>
-                        {getExerciseName(exId)}
-                      </div>
-                      {lastMax !== null && (
-                        <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
-                          Last: {lastMax}kg
+                  <Fragment key={exId}>
+                    <div className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
+                      <div className="w-1/3 pr-2 min-w-0">
+                        <div className="text-xs font-bold text-white truncate">
+                          <span className="text-gray-500 mr-2">{String.fromCharCode(65 + exIndex)}</span>
+                          {getExerciseName(exId)}
                         </div>
-                      )}
-                      {successStatus && <SuccessBadge status={successStatus} compact />}
-                      {maintenanceStatus && <MaintenanceBadge status={maintenanceStatus} compact />}
-                      {deloadStatus && <DeloadBadge status={deloadStatus} compact />}
-                    </div>
-
-                    <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', -rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
-                      <div className="flex-1 text-center leading-tight">
-                        <div className="font-bold text-white text-sm">{Number(rowData.weight.toFixed(2))}</div>
-                        <div className="text-[9px] text-gray-500 font-semibold uppercase">kg</div>
+                        {lastMax !== null && (
+                          <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
+                            Last: {lastMax}kg
+                          </div>
+                        )}
+                        {successStatus && <SuccessBadge status={successStatus} compact />}
+                        {maintenanceStatus && <MaintenanceBadge status={maintenanceStatus} compact />}
+                        {deloadStatus && <DeloadBadge status={deloadStatus} compact />}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSettingsOpenFor(isSettingsOpen ? null : exId)
+                            setSettingsOpenForSetIndex(isSettingsOpen ? null : setIndex)
+                          }}
+                          className="mt-1 text-[9px] text-gray-500 hover:text-gray-300 font-bold transition-colors block"
+                          title="Exercise settings"
+                        >⚙ Settings</button>
                       </div>
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
-                    </div>
 
-                    <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'reps', -1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
-                      <div className="flex-1 text-center leading-tight">
-                        <div className="font-bold text-white text-sm">{rowData.reps}</div>
-                        <div className="text-[9px] text-gray-500 font-semibold uppercase">reps</div>
+                      <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
+                        <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', -rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
+                        <div className="flex-1 text-center leading-tight">
+                          <div className="font-bold text-white text-sm">{Number(rowData.weight.toFixed(2))}</div>
+                          <div className="text-[9px] text-gray-500 font-semibold uppercase">kg</div>
+                        </div>
+                        <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'weight', rowIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
                       </div>
-                      <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'reps', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
+
+                      <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
+                        <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'reps', -1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
+                        <div className="flex-1 text-center leading-tight">
+                          <div className="font-bold text-white text-sm">{rowData.reps}</div>
+                          <div className="text-[9px] text-gray-500 font-semibold uppercase">reps</div>
+                        </div>
+                        <button type="button" onClick={() => updateMatrixValue(exId, setIndex, 'reps', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
+                      </div>
                     </div>
-                  </div>
+                    {isSettingsOpen && (
+                      <div className="bg-gray-900 border border-gray-700 rounded-xl p-3">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="font-bold text-xs text-white">Settings: {getExerciseName(exId)}</h4>
+                          <button type="button" onClick={() => { setSettingsOpenFor(null); setSettingsOpenForSetIndex(null) }} className="text-gray-400 font-bold text-xs">Cancel</button>
+                        </div>
+                        <form action={(fd: FormData) => handleSettingsSave(exId, fd)}>
+                          <ExerciseSettingsFields settings={exSettings} />
+                          <button type="submit" disabled={isSavingSettings} className="w-full bg-white text-black font-bold rounded-lg py-2.5 mt-3 text-sm active:scale-95 transition-all disabled:opacity-50">
+                            {isSavingSettings ? 'Saving...' : 'Save Settings'}
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                  </Fragment>
                 )
               })}
             </div>

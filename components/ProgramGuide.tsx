@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { saveStrengthExercise, saveSupersetLog, advanceRotation } from '@/app/workout/actions'
+import { useState, useEffect, Fragment } from 'react'
+import { useRouter } from 'next/navigation'
+import { saveStrengthExercise, saveSupersetLog, advanceRotation, updateExerciseSettings } from '@/app/workout/actions'
+import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
 import MaintenanceBadge from '@/components/MaintenanceBadge'
@@ -86,20 +88,79 @@ export default function ProgramGuide({
   const firstPE = programExercises[0]
   const firstIsSuperset = !!firstPE?.superset_template_id
 
-  const [step, setStep] = useState(0)
-  const [setsMap, setSetsMap] = useState<Record<number, SetData[]>>(
-    firstIsSuperset
-      ? ({} as Record<number, SetData[]>)
-      : { 0: buildSets(firstPE?.exercise_id) }
-  )
-  const [supersetMap, setSupersetMap] = useState<Record<number, SupersetMatrix>>(
-    firstIsSuperset
-      ? { 0: buildSupersetMatrix(firstPE) }
-      : ({} as Record<number, SupersetMatrix>)
-  )
-  const [logged, setLogged] = useState<Set<number>>(new Set())
-  const [skipped, setSkipped] = useState<Set<number>>(new Set())
+  // Persist progress so navigating away and back restores the current exercise.
+  // Key is per-workout + per-program + per-day so parallel workouts don't collide.
+  const storageKey = `pg_${workoutId}_${program.id}_${dayIndex}`
+
+  const clearSavedProgress = () => {
+    try { localStorage.removeItem(storageKey) } catch {}
+  }
+
+  // Lazy initialisers read localStorage once on mount (safe: client-only component).
+  const [step, setStep] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (!raw) return 0
+      const saved = JSON.parse(raw)
+      // Clamp in case exercises were added/removed since last visit
+      return Math.min(saved.step ?? 0, Math.max(0, programExercises.length - 1))
+    } catch { return 0 }
+  })
+
+  const [setsMap, setSetsMap] = useState<Record<number, SetData[]>>(() => {
+    if (typeof window === 'undefined') return firstIsSuperset ? {} : { 0: buildSets(firstPE?.exercise_id) }
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (saved.setsMap) return saved.setsMap
+      }
+    } catch {}
+    return firstIsSuperset ? {} : { 0: buildSets(firstPE?.exercise_id) }
+  })
+
+  const [supersetMap, setSupersetMap] = useState<Record<number, SupersetMatrix>>(() => {
+    if (typeof window === 'undefined') return firstIsSuperset ? { 0: buildSupersetMatrix(firstPE) } : {}
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (saved.supersetMap) return saved.supersetMap
+      }
+    } catch {}
+    return firstIsSuperset ? { 0: buildSupersetMatrix(firstPE) } : {}
+  })
+
+  const [logged, setLogged] = useState<Set<number>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (Array.isArray(saved.logged)) return new Set<number>(saved.logged)
+      }
+    } catch {}
+    return new Set()
+  })
+
+  const [skipped, setSkipped] = useState<Set<number>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        if (Array.isArray(saved.skipped)) return new Set<number>(saved.skipped)
+      }
+    } catch {}
+    return new Set()
+  })
+
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const router = useRouter()
+  const [settingsOpenFor, setSettingsOpenFor] = useState<string | null>(null)
+  const [settingsOpenForSetIndex, setSettingsOpenForSetIndex] = useState<number | null>(null)
+  const [isSavingSettings, setIsSavingSettings] = useState(false)
 
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSetsPerStep, setCheckedSetsPerStep] = useState<Record<number, Set<number>>>({})
@@ -113,6 +174,19 @@ export default function ProgramGuide({
     }, 1000)
     return () => clearInterval(interval)
   }, [restStartTime])
+
+  // Persist guide progress to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        step,
+        setsMap,
+        supersetMap,
+        logged: [...logged],
+        skipped: [...skipped],
+      }))
+    } catch {}
+  }, [step, setsMap, supersetMap, logged, skipped, storageKey])
 
   const formatRestTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -210,6 +284,8 @@ export default function ProgramGuide({
     }
     setRestStartTime(null)
     setRestSeconds(0)
+    setSettingsOpenFor(null)
+    setSettingsOpenForSetIndex(null)
     setStep(target)
   }
 
@@ -228,6 +304,7 @@ export default function ProgramGuide({
 
     if (then === 'finish') {
       await advanceRotation(program.id, nextRotationIndex)
+      clearSavedProgress()
       onComplete()
     } else {
       navigateTo(step + 1)
@@ -238,10 +315,37 @@ export default function ProgramGuide({
   const skipCurrent = () => {
     setSkipped(prev => new Set(prev).add(step))
     if (isLast) {
-      advanceRotation(program.id, nextRotationIndex).then(onComplete)
+      advanceRotation(program.id, nextRotationIndex).then(() => {
+        clearSavedProgress()
+        onComplete()
+      })
     } else {
       navigateTo(step + 1)
     }
+  }
+
+  // ── Settings save ────────────────────────────────────────
+
+  const handleSettingsSave = async (exerciseId: string, formData: FormData) => {
+    const ex = exercises.find(e => e.id === exerciseId)
+    setIsSavingSettings(true)
+    await updateExerciseSettings(exerciseId, {
+      sets: parseInt(formData.get('sets') as string) || 3,
+      reps: parseInt(formData.get('reps') as string) || 8,
+      reps_min: parseInt(formData.get('reps_min') as string) || 8,
+      weight: parseFloat(formData.get('weight') as string) || 0,
+      increment: parseFloat(formData.get('increment') as string) || 2.5,
+      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
+      protocol: formData.get('protocol') as string,
+      min_successes: parseInt(formData.get('min_successes') as string) || 1,
+      max_failures: parseInt(formData.get('max_failures') as string) || 3,
+      deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+      current_failures: ex?.settings?.current_failures || 0,
+      current_successes: ex?.settings?.current_successes || 0,
+    })
+    setIsSavingSettings(false)
+    router.refresh()
+    setSettingsOpenFor(null)
   }
 
   // ── No exercises guard ───────────────────────────────────
@@ -302,16 +406,26 @@ export default function ProgramGuide({
               </>
             )}
           </div>
-          {logged.has(step) && (
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 px-2 py-1 rounded-full mt-1">
-              Logged ✓
-            </span>
-          )}
-          {skipped.has(step) && (
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-400 px-2 py-1 rounded-full mt-1">
-              Skipped
-            </span>
-          )}
+          <div className="flex items-center gap-2 mt-1 flex-shrink-0">
+            {!isSuperset && currentPE.exercise_id && (
+              <button
+                type="button"
+                onClick={() => setSettingsOpenFor(prev => prev === currentPE.exercise_id ? null : currentPE.exercise_id)}
+                className="bg-gray-100 text-gray-500 font-bold px-2 py-1 rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                title="Exercise settings"
+              >⚙️</button>
+            )}
+            {logged.has(step) && (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                Logged ✓
+              </span>
+            )}
+            {skipped.has(step) && (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-400 px-2 py-1 rounded-full">
+                Skipped
+              </span>
+            )}
+          </div>
         </div>
 
         {/* ── Single exercise sets ── */}
@@ -342,6 +456,22 @@ export default function ProgramGuide({
                 </>
               )
             })()}
+            {/* Settings panel */}
+            {settingsOpenFor === currentPE.exercise_id && currentPE.exercise_id && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-bold text-sm text-gray-900">Settings: {currentExercise?.name}</h4>
+                  <button type="button" onClick={() => setSettingsOpenFor(null)} className="text-gray-400 font-bold text-sm">Cancel</button>
+                </div>
+                <form action={(fd: FormData) => handleSettingsSave(currentPE.exercise_id!, fd)}>
+                  <ExerciseSettingsFields settings={currentExercise?.settings} />
+                  <button type="submit" disabled={isSavingSettings} className="w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
+                    {isSavingSettings ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </form>
+              </div>
+            )}
+
             {/* Rest timer — appears when any set is checked */}
             {(checkedSetsPerStep[step]?.size ?? 0) > 0 && (
               <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
@@ -452,41 +582,67 @@ export default function ProgramGuide({
                     const exDeloadStatus = getDeloadStatus(ex?.settings, exStreak)
                     const exSuccessStatus = getSuccessStatus(ex?.settings, exStreak)
                     const exMaintenanceStatus = getMaintenanceStatus(ex?.settings, exStreak)
+                    const isSettingsOpen = settingsOpenFor === te.exercise_id && settingsOpenForSetIndex === setIndex
                     return (
-                      <div key={te.exercise_id} className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
-                        <div className="w-1/3 pr-2 min-w-0">
-                          <div className="text-xs font-bold text-white truncate">
-                            <span className="text-gray-500 mr-1">{String.fromCharCode(65 + exIdx)}</span>
-                            {te.exercises?.name || 'Exercise'}
-                          </div>
-                          {lastMax !== null && (
-                            <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
-                              Last: {lastMax}kg
+                      <Fragment key={te.exercise_id}>
+                        <div className="flex items-center justify-between gap-2 bg-gray-800 p-2 rounded-xl border border-gray-700">
+                          <div className="w-1/3 pr-2 min-w-0">
+                            <div className="text-xs font-bold text-white truncate">
+                              <span className="text-gray-500 mr-1">{String.fromCharCode(65 + exIdx)}</span>
+                              {te.exercises?.name || 'Exercise'}
                             </div>
-                          )}
-                          {exSuccessStatus && <SuccessBadge status={exSuccessStatus} compact />}
-                          {exMaintenanceStatus && <MaintenanceBadge status={exMaintenanceStatus} compact />}
-                          {exDeloadStatus && <DeloadBadge status={exDeloadStatus} compact />}
-                        </div>
-
-                        <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
-                          <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'weight', -exIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
-                          <div className="flex-1 text-center leading-tight">
-                            <div className="font-bold text-white text-sm">{Number(rowData.weight.toFixed(2))}</div>
-                            <div className="text-[9px] text-gray-500 font-semibold uppercase">kg</div>
+                            {lastMax !== null && (
+                              <div className="text-[9px] text-gray-500 font-semibold mt-0.5 truncate">
+                                Last: {lastMax}kg
+                              </div>
+                            )}
+                            {exSuccessStatus && <SuccessBadge status={exSuccessStatus} compact />}
+                            {exMaintenanceStatus && <MaintenanceBadge status={exMaintenanceStatus} compact />}
+                            {exDeloadStatus && <DeloadBadge status={exDeloadStatus} compact />}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSettingsOpenFor(isSettingsOpen ? null : te.exercise_id)
+                                setSettingsOpenForSetIndex(isSettingsOpen ? null : setIndex)
+                              }}
+                              className="mt-1 text-[9px] text-gray-500 hover:text-gray-300 font-bold transition-colors block"
+                              title="Exercise settings"
+                            >⚙ Settings</button>
                           </div>
-                          <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'weight', exIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
-                        </div>
 
-                        <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
-                          <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'reps', -1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
-                          <div className="flex-1 text-center leading-tight">
-                            <div className="font-bold text-white text-sm">{rowData.reps}</div>
-                            <div className="text-[9px] text-gray-500 font-semibold uppercase">reps</div>
+                          <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
+                            <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'weight', -exIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
+                            <div className="flex-1 text-center leading-tight">
+                              <div className="font-bold text-white text-sm">{Number(rowData.weight.toFixed(2))}</div>
+                              <div className="text-[9px] text-gray-500 font-semibold uppercase">kg</div>
+                            </div>
+                            <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'weight', exIncrement)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
                           </div>
-                          <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'reps', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
+
+                          <div className="flex items-center bg-gray-700 rounded-lg border border-gray-600 flex-1">
+                            <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'reps', -1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-l-lg">-</button>
+                            <div className="flex-1 text-center leading-tight">
+                              <div className="font-bold text-white text-sm">{rowData.reps}</div>
+                              <div className="text-[9px] text-gray-500 font-semibold uppercase">reps</div>
+                            </div>
+                            <button type="button" onClick={() => updateSupersetValue(te.exercise_id, setIndex, 'reps', 1)} className="w-8 h-9 flex items-center justify-center font-bold text-gray-400 active:bg-gray-600 rounded-r-lg">+</button>
+                          </div>
                         </div>
-                      </div>
+                        {isSettingsOpen && (
+                          <div className="bg-gray-900 border border-gray-700 rounded-xl p-3">
+                            <div className="flex justify-between items-center mb-3">
+                              <h4 className="font-bold text-xs text-white">Settings: {te.exercises?.name || ex?.name}</h4>
+                              <button type="button" onClick={() => { setSettingsOpenFor(null); setSettingsOpenForSetIndex(null) }} className="text-gray-400 font-bold text-xs">Cancel</button>
+                            </div>
+                            <form action={(fd: FormData) => handleSettingsSave(te.exercise_id, fd)}>
+                              <ExerciseSettingsFields settings={ex?.settings} />
+                              <button type="submit" disabled={isSavingSettings} className="w-full bg-white text-black font-bold rounded-lg py-2.5 mt-3 text-sm active:scale-95 transition-all disabled:opacity-50">
+                                {isSavingSettings ? 'Saving...' : 'Save Settings'}
+                              </button>
+                            </form>
+                          </div>
+                        )}
+                      </Fragment>
                     )
                   })}
                 </div>
