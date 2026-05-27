@@ -464,7 +464,7 @@ export default function ProgramGuide({
                   <button type="button" onClick={() => setSettingsOpenFor(null)} className="text-gray-400 font-bold text-sm">Cancel</button>
                 </div>
                 <form action={(fd: FormData) => handleSettingsSave(currentPE.exercise_id!, fd)}>
-                  <ExerciseSettingsFields settings={currentExercise?.settings} />
+                  <ExerciseSettingsFields settings={currentExercise?.settings} exerciseId={currentPE.exercise_id!} exerciseName={currentExercise?.name} />
                   <button type="submit" disabled={isSavingSettings} className="w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
                     {isSavingSettings ? 'Saving...' : 'Save Settings'}
                   </button>
@@ -635,7 +635,7 @@ export default function ProgramGuide({
                               <button type="button" onClick={() => { setSettingsOpenFor(null); setSettingsOpenForSetIndex(null) }} className="text-gray-400 font-bold text-xs">Cancel</button>
                             </div>
                             <form action={(fd: FormData) => handleSettingsSave(te.exercise_id, fd)}>
-                              <ExerciseSettingsFields settings={ex?.settings} />
+                              <ExerciseSettingsFields settings={ex?.settings} exerciseId={te.exercise_id} exerciseName={te.exercises?.name || ex?.name} />
                               <button type="submit" disabled={isSavingSettings} className="w-full bg-white text-black font-bold rounded-lg py-2.5 mt-3 text-sm active:scale-95 transition-all disabled:opacity-50">
                                 {isSavingSettings ? 'Saving...' : 'Save Settings'}
                               </button>

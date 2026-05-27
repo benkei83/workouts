@@ -221,7 +221,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
 
   return (
     <>
-      <header className="bg-white px-4 py-4 border-b border-gray-200 sticky top-7 z-20 shadow-sm flex items-center justify-between">
+      <header className="bg-white px-4 py-4 border-b border-gray-200 sticky top-0 z-20 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex-shrink-0 w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors font-bold text-gray-500">
             {isFinished ? '←' : '✕'}

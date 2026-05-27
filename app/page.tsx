@@ -94,7 +94,7 @@ async function Dashboard() {
 
   return (
     <>
-      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-7 z-10 shadow-sm">
+      <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         {/* Top row: title + signed-in email */}
         <div className="flex justify-between items-center">
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
@@ -121,6 +121,9 @@ async function Dashboard() {
             </Link>
             <Link href="/weight" className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors">
               ⚖️ Weight
+            </Link>
+            <Link href="/goals" className="text-sm font-bold text-gray-900 hover:text-orange-500 transition-colors">
+              🎯 Goals
             </Link>
             <Link href="/trophies" className="text-sm font-bold text-gray-900 hover:text-yellow-600 transition-colors">
               🏆 Trophies

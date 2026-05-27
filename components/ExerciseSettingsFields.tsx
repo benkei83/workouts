@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 
 type Settings = {
   protocol?: string
@@ -78,7 +79,16 @@ function NumericStepper({
 }
 
 // ─── Main export ─────────────────────────────────────────────────────────────
-export default function ExerciseSettingsFields({ settings }: { settings?: Settings | null }) {
+export default function ExerciseSettingsFields({
+  settings,
+  exerciseId,
+  exerciseName,
+}: {
+  settings?: Settings | null
+  /** When provided, shows a Goals shortcut link at the bottom of the panel */
+  exerciseId?: string
+  exerciseName?: string
+}) {
   const [protocol,     setProtocol]     = useState(settings?.protocol         ?? 'manual')
   const [sets,         setSets]         = useState(settings?.target_sets      ?? 5)
   const [reps,         setReps]         = useState(settings?.target_reps      ?? 5)
@@ -200,6 +210,24 @@ export default function ExerciseSettingsFields({ settings }: { settings?: Settin
         min={0.5}
         accent="red"
       />
+
+      {/* Goals shortcut — only rendered when exerciseId is provided */}
+      {exerciseId && (
+        <div className="col-span-2 pt-1">
+          <Link
+            href="/goals"
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300 transition-colors group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🎯</span>
+              <span className="text-xs font-bold text-gray-700 group-hover:text-gray-900">
+                {exerciseName ? `Goals for ${exerciseName}` : 'Goals'}
+              </span>
+            </div>
+            <span className="text-gray-400 text-xs font-bold group-hover:text-gray-600">→</span>
+          </Link>
+        </div>
+      )}
     </div>
   )
 }

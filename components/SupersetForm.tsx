@@ -471,7 +471,7 @@ export default function SupersetForm({
                           <button type="button" onClick={() => { setSettingsOpenFor(null); setSettingsOpenForSetIndex(null) }} className="text-gray-400 font-bold text-xs">Cancel</button>
                         </div>
                         <form action={(fd: FormData) => handleSettingsSave(exId, fd)}>
-                          <ExerciseSettingsFields settings={exSettings} />
+                          <ExerciseSettingsFields settings={exSettings} exerciseId={exId} exerciseName={getExerciseName(exId)} />
                           <button type="submit" disabled={isSavingSettings} className="w-full bg-white text-black font-bold rounded-lg py-2.5 mt-3 text-sm active:scale-95 transition-all disabled:opacity-50">
                             {isSavingSettings ? 'Saving...' : 'Save Settings'}
                           </button>

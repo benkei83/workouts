@@ -272,7 +272,7 @@ export default function StrengthForm({
               <button type="button" onClick={() => setUiMode('select')} className="text-gray-400 font-bold text-sm">Cancel</button>
             </div>
             <form action={handleInlineSettingsSave}>
-              <ExerciseSettingsFields settings={activeExerciseData?.settings} />
+              <ExerciseSettingsFields settings={activeExerciseData?.settings} exerciseId={selectedExercise ?? undefined} exerciseName={activeExerciseData?.name} />
               <button type="submit" disabled={isSubmitting} className="col-span-2 w-full bg-black text-white font-bold rounded-lg py-3 mt-4 active:scale-95 transition-all">
                 {isSubmitting ? 'Saving...' : 'Save Settings'}
               </button>

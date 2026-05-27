@@ -339,7 +339,7 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Training Settings</p>
                 <form action={handleUpdateSettings}>
-                  <ExerciseSettingsFields settings={editingExercise.settings} />
+                  <ExerciseSettingsFields settings={editingExercise.settings} exerciseId={editingExercise.id} exerciseName={editingExercise.name} />
                   <button type="submit" disabled={isPending}
                     className="w-full bg-black text-white font-bold rounded-xl py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
                     {isPending ? 'Updating...' : 'Save Settings'}
