@@ -32,7 +32,7 @@ export default function SignInPage() {
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col justify-center px-6">
       <div className="mb-10 text-center">
-        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
+        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Yeah Buddy</h1>
         <p className="text-gray-500 text-sm mt-2">Sign in to your account</p>
       </div>
 

@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Suspense } from "react";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import WorkoutTimer from "@/components/WorkoutTimer";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import IOSInstallPrompt from "@/components/IOSInstallPrompt";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -12,8 +14,22 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Workout Logger",
-  description: "The fastest way to build apps with Next.js and Supabase",
+  title: "Yeah Buddy",
+  description: "Lightweight, baby. Your personal strength training tracker.",
+  applicationName: "Yeah Buddy",
+  appleWebApp: {
+    capable: true,
+    title: "Yeah Buddy",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,   // prevent accidental pinch-zoom mid-set
+  userScalable: false,
+  themeColor: "#18181b",
 };
 
 const geistSans = Geist({
@@ -36,13 +52,21 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* Always reserves 28 px at the top; the async loader fills it with the
-              timer when a workout is active. Fallback matches resolved height so
+          {/* Reserves 28 px at the top for the floating timer pill when a
+              workout is active. The fallback div matches resolved height so
               there is zero layout shift on stream-in. */}
           <Suspense fallback={<div className="h-7" />}>
             <ActiveWorkoutTimerLoader />
           </Suspense>
+
           {children}
+
+          {/* PWA: register service worker */}
+          <ServiceWorkerRegistration />
+
+          {/* PWA: iOS "Add to Home Screen" nudge (only shown in iOS Safari,
+              not when already installed as a standalone app) */}
+          <IOSInstallPrompt />
         </ThemeProvider>
       </body>
     </html>
@@ -72,8 +96,6 @@ async function ActiveWorkoutTimerLoader() {
     /* not authenticated or cookies unavailable */
   }
 
-  // Always render an h-7 block so page content is pushed down by exactly the
-  // same amount whether the timer is visible or not.
   return (
     <div className="h-7">
       {activeWorkout && (

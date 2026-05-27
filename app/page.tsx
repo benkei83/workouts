@@ -97,7 +97,7 @@ async function Dashboard() {
       <header className="bg-white px-6 py-4 border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         {/* Top row: title + signed-in email */}
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Fitness Engine</h1>
+          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Yeah Buddy</h1>
           {user ? (
             <p className="text-gray-400 text-xs ml-3 truncate max-w-[180px] text-right">{user.email}</p>
           ) : (
