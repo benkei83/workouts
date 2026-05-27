@@ -14,10 +14,18 @@ export type DeloadStatus = {
  */
 export function getDeloadStatus(settings: any, streak?: ComputedStreak): DeloadStatus | null {
   if (!settings?.protocol || settings.protocol === 'manual') return null
-  const failures = streak !== undefined
-    ? (streak?.type === 'failure' ? streak.count : 0)
-    : (Number(settings.current_failures) || 0)
   const maxFails = Number(settings.max_failures) || 3
+
+  let failures: number
+  if (streak !== undefined) {
+    const rawCount = streak?.type === 'failure' ? streak.count : 0
+    // Normalize to the current deload cycle — the log-based streak grows across
+    // multiple deload cycles without resetting, so modulo keeps the count accurate.
+    failures = rawCount === 0 ? 0 : rawCount % maxFails
+  } else {
+    failures = Number(settings.current_failures) || 0
+  }
+
   if (failures === 0) return null
   return { failures, maxFails, imminent: failures >= maxFails - 1 }
 }
@@ -38,14 +46,22 @@ export function getSuccessStatus(settings: any, streak?: ComputedStreak): Succes
   if (!settings?.protocol || settings.protocol === 'manual') return null
   const minSuccesses = Number(settings.min_successes) || 1
 
+  // When minSuccesses ≤ 1, weight bumps every successful session — no streak to track.
+  if (minSuccesses <= 1) return null
+
   if (streak !== undefined) {
-    const successes = streak?.type === 'success' ? streak.count : 0
-    if (successes === 0) return null
+    const rawCount = streak?.type === 'success' ? streak.count : 0
+    if (rawCount === 0) return null
+    // Normalize to the current cycle: the log-based streak counts ALL consecutive
+    // successes, but the progression engine resets the counter every minSuccesses
+    // sessions (each full cycle triggers a weight bump). Using modulo keeps the
+    // display accurate when the streak spans multiple completed cycles.
+    const successes = rawCount % minSuccesses
+    if (successes === 0) return null  // just completed a full cycle; weight already bumped
     return { successes, minSuccesses, imminent: successes >= minSuccesses - 1 }
   }
 
-  // Fallback (no computed streak) — suppress when min_successes ≤ 1
-  if (minSuccesses <= 1) return null
+  // Fallback (no computed streak) — stored counter is already cycle-normalized
   const successes = Number(settings.current_successes) || 0
   if (successes === 0) return null
   return { successes, minSuccesses, imminent: successes >= minSuccesses - 1 }

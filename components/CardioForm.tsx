@@ -334,7 +334,7 @@ export default function CardioForm({
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Sec</label>
                 <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                  <button type="button" onClick={() => setDistSecs(s => s === 0 ? 50 : s - 10)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <button type="button" onClick={() => setDistSecs(s => s === 0 ? 59 : s - 1)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
                   <input
                     type="number"
                     value={distSecs}
@@ -344,7 +344,7 @@ export default function CardioForm({
                     }}
                     className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
                   />
-                  <button type="button" onClick={() => setDistSecs(s => s >= 50 ? 0 : s + 10)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                  <button type="button" onClick={() => setDistSecs(s => s >= 59 ? 0 : s + 1)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
                 </div>
               </div>
 

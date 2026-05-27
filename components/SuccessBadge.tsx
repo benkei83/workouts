@@ -21,7 +21,7 @@ export default function SuccessBadge({
           imminent ? 'text-emerald-400' : 'text-green-500'
         }`}
       >
-        {imminent ? '🎯 Increment next!' : `✓ ${successes}/${minSuccesses} successes`}
+        {imminent ? `🎯 One more → increment! (${successes}/${minSuccesses})` : `✓ ${successes}/${minSuccesses} successes`}
       </div>
     )
   }
@@ -37,7 +37,7 @@ export default function SuccessBadge({
       <span>{imminent ? '🎯' : '✓'}</span>
       <span>
         {imminent
-          ? `Weight increases next session — ${successes}/${minSuccesses} in a row`
+          ? `One more success → weight increases (${successes}/${minSuccesses})`
           : `${successes}/${minSuccesses} consecutive successes`}
       </span>
     </div>

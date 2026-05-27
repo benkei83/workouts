@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { saveSupersetLog, saveSupersetTemplate, updateSupersetLog, deleteSupersetTemplate, renameSupersetTemplate } from '@/app/workout/actions'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
@@ -64,6 +65,7 @@ export default function SupersetForm({
   onSave?: (matrix: Record<string, { weight: number; reps: number }[]>, names: Record<string, string>) => void
   userSettings?: UserSettings
 }) {
+  const router = useRouter()
   const isEditing = !!editData && editData.length > 0
 
   // In edit mode we jump straight to 'logging'; the exercises are locked
@@ -185,6 +187,7 @@ export default function SupersetForm({
       if (result && 'error' in result) {
         alert(`Error: ${result.error}`)
       } else {
+        router.refresh()
         onCancel()
       }
     } else {

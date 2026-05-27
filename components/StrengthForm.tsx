@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
 import DeloadBadge from '@/components/DeloadBadge'
@@ -49,6 +50,7 @@ export default function StrengthForm({
   // Local augmentable copy of exercises — so wger-added ones appear immediately
   const [exerciseList, setExerciseList] = useState(exercises)
   const [selectedExercise, setSelectedExercise] = useState(editData?.exerciseId || exercises[0]?.id || '')
+  const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
   const [isWgerOpen, setIsWgerOpen] = useState(false)
@@ -202,7 +204,7 @@ export default function StrengthForm({
     })
     setIsSubmitting(false)
     if (result?.error) alert(`Database Error: ${result.error}`)
-    else onCancel()
+    else { router.refresh(); onCancel() }
   }
 
   return (

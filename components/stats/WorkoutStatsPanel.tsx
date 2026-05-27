@@ -59,15 +59,13 @@ export default function WorkoutStatsPanel({
 }) {
   const stats = useMemo(
     () => computeWorkoutStats({ strengthLogs, runningLogs, durationMins, exercises }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strengthLogs.length, runningLogs.length, durationMins]
+    [strengthLogs, runningLogs, durationMins, exercises]
   )
 
   // Session best sets (one per exercise, by configured method)
   const sessionBestSets: SessionBestSet[] = useMemo(
     () => computeSessionBestSets(strengthLogs, exercises, exerciseSettingsMap),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [strengthLogs.length, exercises.length]
+    [strengthLogs, exercises, exerciseSettingsMap]
   )
 
   // New records: exercises where this session's best beats all-time history
