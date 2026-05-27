@@ -213,7 +213,8 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         screen_name:              settingsRow.screen_name              ?? null,
         show_trophy_toasts:       settingsRow.show_trophy_toasts       ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
         rest_timer_default_secs:  settingsRow.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
-        vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete  ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
+        vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
+        height_cm:                null,
       }
     }
   } catch { /* table not migrated yet — use defaults */ }
