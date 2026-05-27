@@ -59,7 +59,7 @@ export async function saveCardioLog(formData: FormData) {
 
   if (!workoutId || !durationRaw) return { error: 'Missing required fields' }
 
-  const durationMins = parseInt(durationRaw as string)
+  const durationMins = parseFloat(durationRaw as string)
   let finalDistance = distanceRaw ? parseFloat(distanceRaw as string) : null
   let finalSpeed = speedRaw ? parseFloat(speedRaw as string) : null
   const finalIncline = inclineRaw ? parseFloat(inclineRaw as string) : null

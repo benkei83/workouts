@@ -311,33 +311,43 @@ export function InteractiveCanvas({
       {initialRunningLogs.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Completed Cardio</h3>
-          {initialRunningLogs.map((log) => (
-            <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center relative group">
-              <div className="absolute -top-2 -right-2 flex gap-1 z-10">
-                <button
-                  onClick={() => { setEditData(log); setActiveModule('cardio') }}
-                  className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
-                >✏️</button>
-                <button
-                  onClick={() => handleDeleteCardio(log.id)}
-                  className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
-                >✕</button>
+          {initialRunningLogs.map((log) => {
+            if (activeModule === 'cardio' && editData?.id === log.id) {
+              return <CardioForm key={log.id} workoutId={workoutId} onCancel={closeForm} editData={editData} />
+            }
+            const durSecs = log.duration_seconds % 60
+            const durMins = Math.floor(log.duration_seconds / 60)
+            const durationStr = durSecs === 0
+              ? `${durMins} min`
+              : `${durMins}:${String(durSecs).padStart(2, '0')}`
+            return (
+              <div key={log.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center relative group">
+                <div className="absolute -top-2 -right-2 flex gap-1 z-10">
+                  <button
+                    onClick={() => { setEditData(log); setActiveModule('cardio') }}
+                    className="bg-white border border-gray-200 text-gray-400 hover:text-blue-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-[10px] transition-colors"
+                  >✏️</button>
+                  <button
+                    onClick={() => handleDeleteCardio(log.id)}
+                    className="bg-white border border-gray-200 text-gray-300 hover:text-red-500 w-7 h-7 flex items-center justify-center rounded-full shadow-sm text-xs font-bold transition-colors"
+                  >✕</button>
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900 capitalize flex items-center gap-2">
+                    🏃 {log.environment} {log.session_type}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {durationStr}
+                    {log.average_incline ? ` @ ${log.average_incline}% inc` : ''}
+                  </p>
+                </div>
+                <div className="text-right pr-2">
+                  <p className="font-bold text-gray-900">{log.distance_km} <span className="text-xs font-normal text-gray-500">km</span></p>
+                  <p className="text-sm text-gray-500">{log.average_speed} <span className="text-xs">km/h</span></p>
+                </div>
               </div>
-              <div>
-                <p className="font-bold text-gray-900 capitalize flex items-center gap-2">
-                  🏃 {log.environment} {log.session_type}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {Math.round(log.duration_seconds / 60)} mins
-                  {log.average_incline ? ` @ ${log.average_incline}% inc` : ''}
-                </p>
-              </div>
-              <div className="text-right pr-2">
-                <p className="font-bold text-gray-900">{log.distance_km} <span className="text-xs font-normal text-gray-500">km</span></p>
-                <p className="text-sm text-gray-500">{log.average_speed} <span className="text-xs">km/h</span></p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -609,8 +619,8 @@ export function InteractiveCanvas({
       )}
 
       {/* 4. ACTIVE FORMS */}
-      {activeModule === 'cardio' && (
-        <CardioForm workoutId={workoutId} onCancel={closeForm} editData={editData} />
+      {activeModule === 'cardio' && !editData && (
+        <CardioForm workoutId={workoutId} onCancel={closeForm} />
       )}
 
       {activeModule === 'strength' && !editData && (

@@ -25,7 +25,8 @@ export default function CardioForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Distance run controlled state (for steppers)
-  const [distMins, setDistMins]       = useState<number>(editData ? Math.round(editData.duration_seconds / 60) : 30)
+  const [distMins, setDistMins]       = useState<number>(editData ? Math.floor(editData.duration_seconds / 60) : 30)
+  const [distSecs, setDistSecs]       = useState<number>(editData ? editData.duration_seconds % 60 : 0)
   const [distKm, setDistKm]           = useState<number>(editData?.distance_km ?? 5.0)
   const [distIncline, setDistIncline] = useState<number>(editData?.average_incline ?? 1.0)
 
@@ -116,8 +117,9 @@ export default function CardioForm({
       formData.set('incline', averageIncline.toFixed(2))
     }
 
-    if (sessionType === 'distance' && distMins > 0) {
-      const averageSpeed = distKm / (distMins / 60)
+    if (sessionType === 'distance' && (distMins > 0 || distSecs > 0)) {
+      const totalTimeMins = distMins + distSecs / 60
+      const averageSpeed = distKm / (totalTimeMins / 60)
       formData.set('average_speed', averageSpeed.toFixed(2))
     }
 
@@ -307,39 +309,57 @@ export default function CardioForm({
 
         {sessionType === 'distance' && (
           <div className="space-y-3">
-            {/* hidden fields for form submission */}
-            <input type="hidden" name="duration"  value={distMins} />
+            {/* hidden fields for form submission — duration sent as fractional minutes */}
+            <input type="hidden" name="duration"  value={distMins + distSecs / 60} />
             <input type="hidden" name="distance"  value={distKm.toFixed(2)} />
             {environment === 'indoor' && <input type="hidden" name="incline" value={distIncline} />}
 
-            <div className="grid grid-cols-2 gap-3">
-              {/* Time */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* Minutes */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Time (mins)</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Min</label>
                 <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                  <button type="button" onClick={() => setDistMins(m => Math.max(1, m - 1))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <button type="button" onClick={() => setDistMins(m => Math.max(0, m - 1))} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
                   <input
                     type="number"
                     value={distMins}
-                    onChange={e => setDistMins(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={e => setDistMins(Math.max(0, parseInt(e.target.value) || 0))}
                     className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
                   />
-                  <button type="button" onClick={() => setDistMins(m => m + 1)} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                  <button type="button" onClick={() => setDistMins(m => m + 1)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                </div>
+              </div>
+
+              {/* Seconds */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Sec</label>
+                <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => setDistSecs(s => s === 0 ? 50 : s - 10)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <input
+                    type="number"
+                    value={distSecs}
+                    onChange={e => {
+                      const v = Math.max(0, Math.min(59, parseInt(e.target.value) || 0))
+                      setDistSecs(v)
+                    }}
+                    className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
+                  />
+                  <button type="button" onClick={() => setDistSecs(s => s >= 50 ? 0 : s + 10)} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
                 </div>
               </div>
 
               {/* Distance */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Dist (km)</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">km</label>
                 <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
-                  <button type="button" onClick={() => setDistKm(k => parseFloat(Math.max(0, k - 0.1).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
+                  <button type="button" onClick={() => setDistKm(k => parseFloat(Math.max(0, k - 0.1).toFixed(1)))} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">−</button>
                   <input
                     type="number"
                     value={distKm}
                     onChange={e => setDistKm(Math.max(0, parseFloat(e.target.value) || 0))}
                     className="flex-1 text-center bg-transparent text-lg font-bold outline-none min-w-0"
                   />
-                  <button type="button" onClick={() => setDistKm(k => parseFloat((k + 0.1).toFixed(1)))} className="w-10 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
+                  <button type="button" onClick={() => setDistKm(k => parseFloat((k + 0.1).toFixed(1)))} className="w-8 h-12 flex items-center justify-center font-bold text-gray-500 active:bg-gray-100">+</button>
                 </div>
               </div>
             </div>
