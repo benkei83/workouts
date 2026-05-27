@@ -9,7 +9,7 @@ export default function OfflinePage() {
         Looks like the Wi-Fi skipped leg day. Check your connection and try again.
       </p>
       <button
-        onClick={() => window.location.reload()}
+        onClick={() => { window.location.href = '/' }}
         className="bg-black text-white font-bold px-6 py-3 rounded-xl hover:bg-gray-800 active:scale-95 transition-all"
       >
         Try again
