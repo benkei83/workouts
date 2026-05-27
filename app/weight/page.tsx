@@ -48,7 +48,7 @@ async function WeightLoader() {
   const [
     { data: weightLogs },
     { data: recentWorkouts },
-    settingsResult,
+    { data: settingsData },
   ] = await Promise.all([
     supabase
       .from('body_weight_logs')
@@ -78,9 +78,7 @@ async function WeightLoader() {
       .from('user_settings')
       .select('height_cm')
       .eq('user_id', user.id)
-      .maybeSingle()
-      .then(r => r)
-      .catch(() => ({ data: null })),
+      .maybeSingle(),
   ])
 
   // Compute best estimated 1RM per exercise across all sets
@@ -108,9 +106,7 @@ async function WeightLoader() {
     .sort((a, b) => b.orm - a.orm)
     .slice(0, 10)
 
-  const heightCm = (settingsResult as any)?.data?.height_cm
-    ? Number((settingsResult as any).data.height_cm)
-    : null
+  const heightCm = settingsData?.height_cm != null ? Number(settingsData.height_cm) : null
 
   return (
     <WeightPageClient
