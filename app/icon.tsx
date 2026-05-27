@@ -3,7 +3,7 @@ import { ImageResponse } from 'next/og'
 export const size        = { width: 512, height: 512 }
 export const contentType = 'image/png'
 
-// Shared barbell JSX — same image used for favicon and apple-touch-icon
+// SVG barbell — scales correctly at any render size (512×512 favicon, 180×180 apple-icon, etc.)
 export function BarbellIcon() {
   return (
     <div
@@ -14,49 +14,31 @@ export function BarbellIcon() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 96,          // rounded corners (iOS clips anyway, but looks better in browser)
+        borderRadius: '18%',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-
-        {/* ── Left plate ────────────────────────────────────── */}
-        <div style={{
-          width: 52, height: 190,
-          background: 'linear-gradient(180deg, #f97316 0%, #ea580c 100%)',
-          borderRadius: '8px 4px 4px 8px',
-          boxShadow: '2px 0 8px rgba(0,0,0,0.4)',
-        }} />
-
-        {/* Left sleeve (narrower section between plate and bar) */}
-        <div style={{
-          width: 20, height: 106,
-          background: '#71717a',
-          borderRadius: 0,
-        }} />
-
-        {/* ── Bar ───────────────────────────────────────────── */}
-        <div style={{
-          width: 208, height: 28,
-          background: 'linear-gradient(180deg, #f4f4f5 0%, #a1a1aa 50%, #f4f4f5 100%)',
-          borderRadius: 4,
-        }} />
-
-        {/* Right sleeve */}
-        <div style={{
-          width: 20, height: 106,
-          background: '#71717a',
-          borderRadius: 0,
-        }} />
-
-        {/* ── Right plate ───────────────────────────────────── */}
-        <div style={{
-          width: 52, height: 190,
-          background: 'linear-gradient(180deg, #f97316 0%, #ea580c 100%)',
-          borderRadius: '4px 8px 8px 4px',
-          boxShadow: '-2px 0 8px rgba(0,0,0,0.4)',
-        }} />
-
-      </div>
+      {/*
+        viewBox 200×100 (2:1) — barbell fills the full width.
+        SVG is rendered at 82% width / 41% height of the parent square,
+        preserving the 2:1 aspect ratio at every canvas size.
+      */}
+      <svg
+        width="82%"
+        height="41%"
+        viewBox="0 0 200 100"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Left plate */}
+        <rect x="0"   y="5"  width="26" height="90" rx="4" fill="#f97316" />
+        {/* Left collar */}
+        <rect x="26"  y="26" width="14" height="48" rx="2" fill="#71717a" />
+        {/* Bar */}
+        <rect x="40"  y="38" width="120" height="24" rx="3" fill="#d4d4d8" />
+        {/* Right collar */}
+        <rect x="160" y="26" width="14" height="48" rx="2" fill="#71717a" />
+        {/* Right plate */}
+        <rect x="174" y="5"  width="26" height="90" rx="4" fill="#f97316" />
+      </svg>
     </div>
   )
 }
