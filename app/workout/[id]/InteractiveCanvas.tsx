@@ -114,6 +114,37 @@ export function InteractiveCanvas({
     prevLogCount.current = newCount
   }, [initialStrengthLogs.length])
 
+  // ── Screen wake lock ──────────────────────────────────────────────────────
+  // Keeps the screen on while a workout is active. The lock is automatically
+  // released by the browser when the page is hidden (e.g. user switches apps),
+  // so we re-request it on visibility change.
+  useEffect(() => {
+    if (isFinished) return
+    if (!('wakeLock' in navigator)) return
+
+    let sentinel: { release: () => Promise<void> } | null = null
+
+    const acquire = async () => {
+      try {
+        sentinel = await (navigator as any).wakeLock.request('screen')
+      } catch {
+        // Silently ignore — e.g. battery saver mode, low power state
+      }
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') acquire()
+    }
+
+    acquire()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      sentinel?.release().catch(() => {})
+    }
+  }, [isFinished])
+
   const handleSaveStrength = async (
     exerciseId: string,
     exerciseName: string,

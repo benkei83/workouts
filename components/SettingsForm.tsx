@@ -75,9 +75,11 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
   // ── Training ───────────────────────────────────────────────────────────────
   const [restSecs, setRestSecs]   = useState<number | null>(settings.rest_timer_default_secs)
   const [vibrate, setVibrate]     = useState(settings.vibrate_on_rest_complete)
+  const [sound, setSound]         = useState(settings.sound_on_rest_complete)
   const [vibrateSupported, setVibrateSupported] = useState(false)
   const [restSaved, setRestSaved]     = useState(false)
   const [vibrateSaved, setVibrateSaved] = useState(false)
+  const [soundSaved, setSoundSaved]     = useState(false)
 
   // ── Notifications ──────────────────────────────────────────────────────────
   const [trophyToast, setTrophyToast] = useState(settings.show_trophy_toasts)
@@ -124,6 +126,13 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
     setVibrate(next)
     await updateUserSettings({ vibrate_on_rest_complete: next })
     flash(setVibrateSaved)
+  }
+
+  const handleSound = async () => {
+    const next = !sound
+    setSound(next)
+    await updateUserSettings({ sound_on_rest_complete: next })
+    flash(setSoundSaved)
   }
 
   const handleTrophyToast = async () => {
@@ -260,6 +269,22 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
               💡 Try opening the app in Chrome on Android for vibration support.
             </p>
           )}
+        </Row>
+
+        {/* Sound */}
+        <Row>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-sm font-semibold text-gray-700">Beep when rest ends</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Plays two short beeps when your rest countdown hits zero.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SavedBadge show={soundSaved} />
+              <Toggle on={sound} onChange={handleSound} />
+            </div>
+          </div>
         </Row>
       </Section>
 

@@ -204,7 +204,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
   try {
     const { data: settingsRow } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -214,6 +214,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         show_trophy_toasts:       settingsRow.show_trophy_toasts       ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
         rest_timer_default_secs:  settingsRow.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
         vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
+        sound_on_rest_complete:   settingsRow.sound_on_rest_complete   ?? DEFAULT_USER_SETTINGS.sound_on_rest_complete,
         height_cm:                null,
       }
     }

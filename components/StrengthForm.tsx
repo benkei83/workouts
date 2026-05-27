@@ -315,6 +315,7 @@ export default function StrengthForm({
         startedAt={restStartTime}
         defaultSecs={userSettings.rest_timer_default_secs}
         vibrateOnComplete={userSettings.vibrate_on_rest_complete}
+        soundOnComplete={userSettings.sound_on_rest_complete}
       />
 
       <div className="space-y-2 mb-6">

@@ -389,6 +389,7 @@ export default function SupersetForm({
             startedAt={restStartTime}
             defaultSecs={userSettings.rest_timer_default_secs}
             vibrateOnComplete={userSettings.vibrate_on_rest_complete}
+            soundOnComplete={userSettings.sound_on_rest_complete}
           />
 
           {Array.from({ length: numSets }).map((_, setIndex) => {
