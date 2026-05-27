@@ -473,11 +473,312 @@ export async function finishWorkoutWithFeel(
     }
   }
 
+  // ── Auto-share to community feed ─────────────────────────────────────────
+  if (user) {
+    try {
+      const { data: userSettings } = await supabase
+        .from('user_settings')
+        .select('screen_name, auto_share_workouts')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const autoShare = userSettings?.auto_share_workouts ?? true
+
+      if (autoShare) {
+        const { data: wData } = await supabase
+          .from('workouts')
+          .select(`
+            title, total_duration_mins,
+            running_logs( distance_km, session_type ),
+            strength_logs(
+              strength_sets(
+                exercise_id, actual_weight, actual_reps, is_pr,
+                exercises(name)
+              )
+            )
+          `)
+          .eq('id', workoutId)
+          .single()
+
+        if (wData) {
+          const allSets = (wData.strength_logs as any[]).flatMap((l: any) => l.strength_sets || [])
+          const completedSets = allSets.filter((s: any) => (Number(s.actual_reps) || 0) > 0)
+
+          // Cardio sessions
+          const cardio = ((wData.running_logs as any[]) || [])
+            .filter((r: any) => Number(r.distance_km) > 0)
+            .map((r: any) => ({
+              session_type: (r.session_type as string | null) ?? null,
+              distance_km:  Math.round(Number(r.distance_km) * 10) / 10,
+            }))
+
+          // Per-exercise stats: sets, max weight, reps at max weight
+          const exMap = new Map<string, { name: string; sets: number; max_weight: number; top_reps: number }>()
+          for (const s of completedSets) {
+            if (!s.exercise_id) continue
+            const name = (s.exercises as any)?.name ?? 'Unknown'
+            const weight = Number(s.actual_weight) || 0
+            const reps   = Number(s.actual_reps)   || 0
+            if (!exMap.has(s.exercise_id)) {
+              exMap.set(s.exercise_id, { name, sets: 0, max_weight: 0, top_reps: 0 })
+            }
+            const ex = exMap.get(s.exercise_id)!
+            ex.sets++
+            if (weight > ex.max_weight || (weight === ex.max_weight && reps > ex.top_reps)) {
+              ex.max_weight = weight
+              ex.top_reps   = reps
+            }
+          }
+          const exercises = Array.from(exMap.values())
+
+          const totalSets   = completedSets.length
+          const totalVolume = Math.round(
+            completedSets.reduce((sum: number, s: any) =>
+              sum + (Number(s.actual_weight) || 0) * (Number(s.actual_reps) || 0), 0)
+          )
+
+          // PRs — one badge per exercise
+          const seenPrEx = new Set<string>()
+          const prs = allSets
+            .filter((s: any) => s.is_pr)
+            .filter((s: any) => {
+              if (!s.exercise_id || seenPrEx.has(s.exercise_id)) return false
+              seenPrEx.add(s.exercise_id)
+              return true
+            })
+            .map((s: any) => ({
+              exercise: (s.exercises as any)?.name ?? 'Unknown',
+              weight:   Number(s.actual_weight),
+              reps:     Number(s.actual_reps),
+            }))
+
+          // Goal achievements hit during this workout
+          const achievements: { label: string }[] = []
+          try {
+            const { data: goals } = await supabase
+              .from('user_goals')
+              .select('id, goal_type, target_value, target_reps, exercise_id')
+              .eq('user_id', user.id)
+              .is('achieved_at', null)
+              .in('goal_type', ['max_weight', 'weight_reps'])
+
+            for (const goal of (goals || [])) {
+              const exSets = completedSets.filter((s: any) => s.exercise_id === goal.exercise_id)
+              if (exSets.length === 0) continue
+              const exName = (exSets[0].exercises as any)?.name ?? 'Exercise'
+              if (goal.goal_type === 'max_weight') {
+                const hit = exSets.some((s: any) => Number(s.actual_weight) >= Number(goal.target_value))
+                if (hit) achievements.push({ label: `${exName} ${goal.target_value} kg` })
+              } else if (goal.goal_type === 'weight_reps') {
+                const hit = exSets.some((s: any) =>
+                  Number(s.actual_weight) >= Number(goal.target_value) &&
+                  Number(s.actual_reps)   >= Number(goal.target_reps || 1)
+                )
+                if (hit) achievements.push({ label: `${exName} ${goal.target_reps}×${goal.target_value} kg` })
+              }
+            }
+          } catch { /* goals table may not have target_reps yet */ }
+
+          await supabase.from('feed_posts').insert({
+            user_id:      user.id,
+            workout_id:   workoutId,
+            post_type:    'workout',
+            screen_name:  userSettings?.screen_name ?? null,
+            workout_title: wData.title,
+            workout_summary: {
+              duration_mins: Number(wData.total_duration_mins) || 0,
+              exercises,
+              total_sets:    totalSets,
+              total_volume:  totalVolume,
+              prs,
+              achievements,
+              cardio,
+            },
+          })
+          // Do NOT call revalidatePath here — any revalidatePath call from this
+          // server action triggers a full page re-render on the client, which
+          // unmounts FinishWorkoutButton and wipes pendingTrophies (trophy toast
+          // disappears instantly). The feed page uses force-dynamic so it always
+          // fetches fresh data on navigation.
+        }
+      }
+    } catch (err) {
+      console.error('[feed post]', err)
+      // Never let feed errors block finishing a workout
+    }
+  }
+
   // Do NOT call revalidatePath here — it causes Next.js to refresh the current
   // page while the trophy toast is still visible, which unmounts FinishWorkoutButton
   // and clears pendingTrophies. The client already calls router.refresh() before
   // navigating away, so cache invalidation is handled on the client side.
   return { success: true, newTrophies }
+}
+
+/** Manually share a finished workout to the feed (or refresh an existing post's summary). */
+export async function shareWorkoutToFeed(workoutId: string): Promise<{ ok: true; postId: string } | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  // Always rebuild the full summary so re-sharing picks up the latest data
+  const [{ data: wData }, { data: userSettings }, { data: existing }] = await Promise.all([
+    supabase
+      .from('workouts')
+      .select(`
+        title, total_duration_mins,
+        running_logs( distance_km, session_type ),
+        strength_logs(
+          strength_sets(
+            exercise_id, actual_weight, actual_reps, is_pr,
+            exercises(name)
+          )
+        )
+      `)
+      .eq('id', workoutId)
+      .eq('user_id', user.id)
+      .single(),
+    supabase
+      .from('user_settings')
+      .select('screen_name')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('feed_posts')
+      .select('id')
+      .eq('workout_id', workoutId)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ])
+
+  if (!wData) return { error: 'Workout not found' }
+
+  const allSets = (wData.strength_logs as any[]).flatMap((l: any) => l.strength_sets || [])
+  const completedSets = allSets.filter((s: any) => (Number(s.actual_reps) || 0) > 0)
+
+  // Cardio sessions
+  const cardio = ((wData.running_logs as any[]) || [])
+    .filter((r: any) => Number(r.distance_km) > 0)
+    .map((r: any) => ({
+      session_type: (r.session_type as string | null) ?? null,
+      distance_km:  Math.round(Number(r.distance_km) * 10) / 10,
+    }))
+
+  // Per-exercise stats
+  const exMap = new Map<string, { name: string; sets: number; max_weight: number; top_reps: number }>()
+  for (const s of completedSets) {
+    if (!s.exercise_id) continue
+    const name   = (s.exercises as any)?.name ?? 'Unknown'
+    const weight = Number(s.actual_weight) || 0
+    const reps   = Number(s.actual_reps)   || 0
+    if (!exMap.has(s.exercise_id)) {
+      exMap.set(s.exercise_id, { name, sets: 0, max_weight: 0, top_reps: 0 })
+    }
+    const ex = exMap.get(s.exercise_id)!
+    ex.sets++
+    if (weight > ex.max_weight || (weight === ex.max_weight && reps > ex.top_reps)) {
+      ex.max_weight = weight
+      ex.top_reps   = reps
+    }
+  }
+  const exercises = Array.from(exMap.values())
+
+  const seenPrEx = new Set<string>()
+  const prs = allSets
+    .filter((s: any) => s.is_pr)
+    .filter((s: any) => {
+      if (!s.exercise_id || seenPrEx.has(s.exercise_id)) return false
+      seenPrEx.add(s.exercise_id)
+      return true
+    })
+    .map((s: any) => ({
+      exercise: (s.exercises as any)?.name ?? 'Unknown',
+      weight:   Number(s.actual_weight),
+      reps:     Number(s.actual_reps),
+    }))
+
+  // Goal achievements
+  const achievements: { label: string }[] = []
+  try {
+    const { data: goals } = await supabase
+      .from('user_goals')
+      .select('id, goal_type, target_value, target_reps, exercise_id')
+      .eq('user_id', user.id)
+      .is('achieved_at', null)
+      .in('goal_type', ['max_weight', 'weight_reps'])
+
+    for (const goal of (goals || [])) {
+      const exSets = completedSets.filter((s: any) => s.exercise_id === goal.exercise_id)
+      if (exSets.length === 0) continue
+      const exName = (exSets[0].exercises as any)?.name ?? 'Exercise'
+      if (goal.goal_type === 'max_weight') {
+        const hit = exSets.some((s: any) => Number(s.actual_weight) >= Number(goal.target_value))
+        if (hit) achievements.push({ label: `${exName} ${goal.target_value} kg` })
+      } else if (goal.goal_type === 'weight_reps') {
+        const hit = exSets.some((s: any) =>
+          Number(s.actual_weight) >= Number(goal.target_value) &&
+          Number(s.actual_reps)   >= Number(goal.target_reps || 1)
+        )
+        if (hit) achievements.push({ label: `${exName} ${goal.target_reps}×${goal.target_value} kg` })
+      }
+    }
+  } catch { /* goals table may not have target_reps yet */ }
+
+  const workout_summary = {
+    duration_mins: Number(wData.total_duration_mins) || 0,
+    exercises,
+    total_sets:    completedSets.length,
+    total_volume:  Math.round(
+      completedSets.reduce((sum: number, s: any) =>
+        sum + (Number(s.actual_weight) || 0) * (Number(s.actual_reps) || 0), 0)
+    ),
+    prs,
+    achievements,
+    cardio,
+  }
+
+  if (existing) {
+    // Update existing post: refresh summary and make visible
+    await supabase
+      .from('feed_posts')
+      .update({ is_visible: true, workout_summary })
+      .eq('id', existing.id)
+    revalidatePath(`/workout/${workoutId}`)
+    revalidatePath('/feed')
+    return { ok: true, postId: existing.id }
+  }
+
+  // No post yet — insert fresh
+  const { data: newPost, error } = await supabase.from('feed_posts').insert({
+    user_id:       user.id,
+    workout_id:    workoutId,
+    post_type:     'workout',
+    screen_name:   userSettings?.screen_name ?? null,
+    workout_title: wData.title,
+    workout_summary,
+  }).select('id').single()
+
+  if (error || !newPost) return { error: error?.message ?? 'Insert failed' }
+
+  revalidatePath(`/workout/${workoutId}`)
+  revalidatePath('/feed')
+  return { ok: true, postId: newPost.id }
+}
+
+/** Hide a workout post from the feed (soft-delete: is_visible = false). */
+export async function unshareWorkoutFromFeed(postId: string, workoutId: string): Promise<void> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('feed_posts')
+    .update({ is_visible: false })
+    .eq('id', postId)
+    .eq('user_id', user.id)
+
+  revalidatePath(`/workout/${workoutId}`)
+  revalidatePath('/feed')
 }
 
 /** Update feel_rating + intensity on an already-finished workout. */

@@ -30,7 +30,7 @@ async function SettingsContent() {
   try {
     const { data } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, height_cm')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, auto_share_workouts, height_cm')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -41,6 +41,7 @@ async function SettingsContent() {
         rest_timer_default_secs:  data.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
         vibrate_on_rest_complete: data.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
         sound_on_rest_complete:   data.sound_on_rest_complete   ?? DEFAULT_USER_SETTINGS.sound_on_rest_complete,
+        auto_share_workouts:      data.auto_share_workouts      ?? DEFAULT_USER_SETTINGS.auto_share_workouts,
         height_cm:                data.height_cm != null ? Number(data.height_cm) : null,
       }
     }

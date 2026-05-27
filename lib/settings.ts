@@ -6,6 +6,8 @@ export type UserSettings = {
   vibrate_on_rest_complete: boolean
   /** Play an audio beep when the rest countdown reaches zero */
   sound_on_rest_complete: boolean
+  /** Automatically post a workout summary to the community feed when finishing */
+  auto_share_workouts: boolean
   /** Height in centimetres — used for BMI and Wilks score on the weight tracker */
   height_cm: number | null
 }
@@ -16,5 +18,6 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   rest_timer_default_secs: 120,   // 2 min countdown
   vibrate_on_rest_complete: true,
   sound_on_rest_complete: true,
+  auto_share_workouts: true,
   height_cm: null,
 }

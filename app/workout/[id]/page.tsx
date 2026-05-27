@@ -10,6 +10,7 @@ import { computeExerciseStreak } from '@/lib/streaks'
 import { computeHistoricalBestsFromLogs } from '@/lib/stats/compute'
 import { DEFAULT_USER_SETTINGS } from '@/lib/settings'
 import type { UserSettings } from '@/lib/settings'
+import ShareWorkoutButton from '@/components/ShareWorkoutButton'
 
 // ==========================================
 // THE PAGE SHELL
@@ -216,9 +217,24 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
         sound_on_rest_complete:   settingsRow.sound_on_rest_complete   ?? DEFAULT_USER_SETTINGS.sound_on_rest_complete,
         height_cm:                null,
+        auto_share_workouts:      DEFAULT_USER_SETTINGS.auto_share_workouts,
       }
     }
   } catch { /* table not migrated yet — use defaults */ }
+
+  // Check if this workout has been shared to the feed (for the share toggle button)
+  let feedPost: { id: string; is_visible: boolean } | null = null
+  if (isFinished) {
+    try {
+      const { data } = await supabase
+        .from('feed_posts')
+        .select('id, is_visible')
+        .eq('workout_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      feedPost = data
+    } catch { /* table not created yet */ }
+  }
 
   return (
     <>
@@ -237,6 +253,13 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         
         <div className="flex items-center gap-2 flex-shrink-0">
           {!isFinished && <FinishWorkoutButton workoutId={workout.id} showTrophyToast={profileSettings.show_trophy_toasts} />}
+          {isFinished && (
+            <ShareWorkoutButton
+              workoutId={workout.id}
+              feedPostId={feedPost?.id ?? null}
+              feedPostVisible={feedPost?.is_visible ?? false}
+            />
+          )}
           <WorkoutOptions workoutId={workout.id} currentTitle={workout.title} />
         </div>
       </header>

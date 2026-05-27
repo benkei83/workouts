@@ -81,6 +81,10 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
   const [vibrateSaved, setVibrateSaved] = useState(false)
   const [soundSaved, setSoundSaved]     = useState(false)
 
+  // ── Community ──────────────────────────────────────────────────────────────
+  const [autoShare, setAutoShare]     = useState(settings.auto_share_workouts)
+  const [autoShareSaved, setAutoShareSaved] = useState(false)
+
   // ── Notifications ──────────────────────────────────────────────────────────
   const [trophyToast, setTrophyToast] = useState(settings.show_trophy_toasts)
   const [toastSaved, setToastSaved]   = useState(false)
@@ -133,6 +137,13 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
     setSound(next)
     await updateUserSettings({ sound_on_rest_complete: next })
     flash(setSoundSaved)
+  }
+
+  const handleAutoShare = async () => {
+    const next = !autoShare
+    setAutoShare(next)
+    await updateUserSettings({ auto_share_workouts: next })
+    flash(setAutoShareSaved)
   }
 
   const handleTrophyToast = async () => {
@@ -283,6 +294,24 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
             <div className="flex items-center gap-2">
               <SavedBadge show={soundSaved} />
               <Toggle on={sound} onChange={handleSound} />
+            </div>
+          </div>
+        </Row>
+      </Section>
+
+      {/* ── COMMUNITY ── */}
+      <Section title="Community">
+        <Row>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-sm font-semibold text-gray-700">Auto-share workouts</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Post a summary card to the community feed every time you finish a workout. You can always remove individual posts later.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SavedBadge show={autoShareSaved} />
+              <Toggle on={autoShare} onChange={handleAutoShare} />
             </div>
           </div>
         </Row>
