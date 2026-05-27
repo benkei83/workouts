@@ -90,7 +90,7 @@ async function GoalsLoader() {
   ] = await Promise.all([
     supabase
       .from('user_goals')
-      .select('id, goal_type, target_value, starting_value, label, deadline, achieved_at, created_at, exercise_id, exercises(name)')
+      .select('id, goal_type, target_value, target_reps, starting_value, label, deadline, achieved_at, created_at, exercise_id, exercises(name)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }),
 
@@ -129,6 +129,10 @@ async function GoalsLoader() {
 
   const exSessionsMap = new Map<string, { date: string; max_weight: number; best_1rm: number }[]>()
 
+  // For weight_reps goals: Map<exerciseId, Map<weight_kg, maxReps>>
+  // Tracks the best reps ever achieved at each weight across all sessions.
+  const exBestRepsMap = new Map<string, Map<number, number>>()
+
   for (const workout of recentWorkouts || []) {
     const dateStr = (workout.created_at as string).slice(0, 10)
     const daily: Record<string, { max_weight: number; best_1rm: number }> = {}
@@ -141,9 +145,17 @@ async function GoalsLoader() {
         const r = Number(set.actual_reps) || 0
         if (w <= 0 || r <= 0) continue
         const orm = estimateOneRM(w, r)
+
+        // Session bests
         if (!daily[exId]) daily[exId] = { max_weight: 0, best_1rm: 0 }
         if (w > daily[exId].max_weight)   daily[exId].max_weight = w
         if (orm > daily[exId].best_1rm)   daily[exId].best_1rm   = orm
+
+        // All-time best reps at each weight (for weight_reps achievement check)
+        if (!exBestRepsMap.has(exId)) exBestRepsMap.set(exId, new Map())
+        const repsAtWeight = exBestRepsMap.get(exId)!
+        const prev = repsAtWeight.get(w) ?? 0
+        if (r > prev) repsAtWeight.set(w, r)
       }
     }
 
@@ -166,18 +178,19 @@ async function GoalsLoader() {
   // ── Body weight: sorted asc, current value ─────────────────────────────────
 
   const bwHistory = (bwLogs || []).map(l => ({
-    date:      String(l.logged_at),
-    value:     Number(l.weight_kg),
+    date:  String(l.logged_at),
+    value: Number(l.weight_kg),
   }))
   const currentBW = bwHistory.length > 0 ? bwHistory[bwHistory.length - 1].value : null
 
   // ── Compute goal stats ─────────────────────────────────────────────────────
 
   const computedGoals: ComputedGoal[] = (rawGoals || []).map(goal => {
-    const gt      = goal.goal_type as ComputedGoal['goal_type']
-    const exId    = goal.exercise_id as string | null
-    const exName  = (goal.exercises as any)?.name as string | null
-    const target  = Number(goal.target_value)
+    const gt       = goal.goal_type as ComputedGoal['goal_type']
+    const exId     = goal.exercise_id as string | null
+    const exName   = (goal.exercises as any)?.name as string | null
+    const target   = Number(goal.target_value)
+    const tReps    = goal.target_reps != null ? Number(goal.target_reps) : null
     const starting = goal.starting_value != null ? Number(goal.starting_value) : null
 
     let current_value: number | null = null
@@ -200,34 +213,51 @@ async function GoalsLoader() {
     } else if (gt === 'max_weight' && sessions.length > 0) {
       current_value = Math.max(...sessions.map(s => s.max_weight))
       const s = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.max_weight })))
-      weekly_rate  = s != null ? parseFloat((s * 7).toFixed(3)) : null
+      weekly_rate  = s != null ? parseFloat((s * 7).toFixed(2)) : null
       eta_date     = calcEta(weekly_rate, current_value, target)
       progress_pct = calcProgress(current_value, starting, target)
 
     } else if (gt === '1rm' && sessions.length > 0) {
       current_value = Math.max(...sessions.map(s => s.best_1rm))
       const s = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.best_1rm })))
-      weekly_rate  = s != null ? parseFloat((s * 7).toFixed(3)) : null
+      weekly_rate  = s != null ? parseFloat((s * 7).toFixed(2)) : null
       eta_date     = calcEta(weekly_rate, current_value, target)
       progress_pct = calcProgress(current_value, starting, target)
 
     } else if (gt === 'bw_multiple' && sessions.length > 0 && currentBW) {
       const best1rm = Math.max(...sessions.map(s => s.best_1rm))
-      current_value = parseFloat((best1rm / currentBW).toFixed(3))  // ratio
+      current_value = parseFloat((best1rm / currentBW).toFixed(3))
 
-      // ETA: treat as 1RM goal against (target_multiple × currentBW), assume BW constant
-      const target1rm = target * currentBW
-      const s = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.best_1rm })))
-      const weeklyOrm = s != null ? s * 7 : null
-      weekly_rate = weeklyOrm != null ? parseFloat((weeklyOrm / currentBW).toFixed(4)) : null
-      eta_date    = calcEta(weeklyOrm, best1rm, target1rm)
-      progress_pct = calcProgress(current_value, starting, target)
+      const target1rm  = target * currentBW
+      const s          = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.best_1rm })))
+      const weeklyOrm  = s != null ? s * 7 : null
+      weekly_rate      = weeklyOrm != null ? parseFloat((weeklyOrm / currentBW).toFixed(4)) : null
+      eta_date         = calcEta(weeklyOrm, best1rm, target1rm)
+      progress_pct     = calcProgress(current_value, starting, target)
+
+    } else if (gt === 'weight_reps' && sessions.length > 0 && tReps !== null) {
+      // Progress: tracked via implied 1RM (handles weight + rep improvements holistically)
+      const impliedTargetOrm = estimateOneRM(target, tReps)
+      const bestOrm          = Math.max(...sessions.map(s => s.best_1rm))
+
+      // current_value: max reps achieved at or above target weight (for display)
+      const repsMap    = exBestRepsMap.get(exId ?? '') ?? new Map<number, number>()
+      const atOrAbove  = Array.from(repsMap.entries()).filter(([w]) => w >= target)
+      current_value    = atOrAbove.length > 0 ? Math.max(...atOrAbove.map(([, r]) => r)) : 0
+
+      // Progress bar uses 1RM scale (starting_value was stored as best 1RM at creation)
+      progress_pct = calcProgress(bestOrm, starting, impliedTargetOrm)
+
+      const s      = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.best_1rm })))
+      weekly_rate  = s != null ? parseFloat((s * 7).toFixed(2)) : null
+      eta_date     = calcEta(weekly_rate, bestOrm, impliedTargetOrm)
     }
 
     return {
       id:             goal.id as string,
       goal_type:      gt,
       target_value:   target,
+      target_reps:    tReps,
       starting_value: starting,
       label:          goal.label as string | null,
       deadline:       goal.deadline as string | null,
@@ -243,9 +273,21 @@ async function GoalsLoader() {
   })
 
   // ── Auto-achieve goals that just crossed 100% ─────────────────────────────
+  // weight_reps: must have an actual logged set with weight >= target AND reps >= target_reps.
+  // All other types: use 1RM-based progress_pct >= 100.
 
   const newlyAchievedIds = computedGoals
-    .filter(g => !g.achieved_at && g.progress_pct >= 100)
+    .filter(g => {
+      if (g.achieved_at) return false
+      if (g.goal_type === 'weight_reps' && g.target_reps !== null && g.exercise_id) {
+        const repsMap   = exBestRepsMap.get(g.exercise_id) ?? new Map<number, number>()
+        const achieved  = Array.from(repsMap.entries()).some(
+          ([w, r]) => w >= g.target_value && r >= g.target_reps!
+        )
+        return achieved
+      }
+      return g.progress_pct >= 100
+    })
     .map(g => g.id)
 
   if (newlyAchievedIds.length > 0) {

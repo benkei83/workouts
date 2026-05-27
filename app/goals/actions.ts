@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { estimateOneRM } from '@/lib/stats/compute'
 
-const VALID_TYPES = ['max_weight', '1rm', 'bw_multiple', 'body_weight'] as const
+const VALID_TYPES = ['max_weight', '1rm', 'bw_multiple', 'body_weight', 'weight_reps'] as const
 type GoalType = typeof VALID_TYPES[number]
 
 export async function createGoal(formData: FormData) {
@@ -14,13 +14,17 @@ export async function createGoal(formData: FormData) {
 
   const goal_type = formData.get('goal_type') as GoalType
   const target_value = parseFloat(formData.get('target_value') as string)
-  const exercise_id = (formData.get('exercise_id') as string) || null
-  const label = (formData.get('label') as string)?.trim() || null
-  const deadline = (formData.get('deadline') as string) || null
+  const target_reps  = formData.get('target_reps') ? parseInt(formData.get('target_reps') as string) : null
+  const exercise_id  = (formData.get('exercise_id') as string) || null
+  const label        = (formData.get('label') as string)?.trim() || null
+  const deadline     = (formData.get('deadline') as string) || null
 
   if (!VALID_TYPES.includes(goal_type)) return { error: 'Invalid goal type' }
   if (isNaN(target_value) || target_value <= 0) return { error: 'Invalid target value' }
   if (goal_type !== 'body_weight' && !exercise_id) return { error: 'Exercise required' }
+  if (goal_type === 'weight_reps') {
+    if (!target_reps || target_reps < 1) return { error: 'Target reps required' }
+  }
 
   // Auto-compute starting_value from current bests so progress % is meaningful
   let starting_value: number | null = null
@@ -62,6 +66,9 @@ export async function createGoal(formData: FormData) {
       starting_value = bestWeight || null
     } else if (goal_type === '1rm') {
       starting_value = bestOrm || null
+    } else if (goal_type === 'weight_reps') {
+      // Progress is tracked via implied 1RM; starting = current best 1RM
+      starting_value = bestOrm || null
     } else if (goal_type === 'bw_multiple') {
       const { data: bwLog } = await supabase
         .from('body_weight_logs')
@@ -81,6 +88,7 @@ export async function createGoal(formData: FormData) {
       user_id: user.id,
       goal_type,
       target_value,
+      target_reps: goal_type === 'weight_reps' ? target_reps : null,
       exercise_id,
       label,
       deadline: deadline || null,

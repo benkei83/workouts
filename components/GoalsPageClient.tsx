@@ -5,12 +5,13 @@ import { createGoal, deleteGoal } from '@/app/goals/actions'
 
 // ── Shared types (exported for page.tsx) ──────────────────────────────────────
 
-export type GoalType = 'max_weight' | '1rm' | 'bw_multiple' | 'body_weight'
+export type GoalType = 'max_weight' | '1rm' | 'bw_multiple' | 'body_weight' | 'weight_reps'
 
 export interface ComputedGoal {
   id:             string
   goal_type:      GoalType
   target_value:   number
+  target_reps:    number | null   // only set for weight_reps goals
   starting_value: number | null
   label:          string | null
   deadline:       string | null
@@ -39,11 +40,24 @@ interface Props {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const GOAL_TYPE_META: Record<GoalType, { label: string; unit: string; icon: string; description: string }> = {
-  max_weight:  { label: 'Max Weight',       unit: 'kg',  icon: '🏋️', description: 'Hit a target training weight for this exercise' },
-  '1rm':       { label: 'Estimated 1RM',    unit: 'kg',  icon: '💪', description: 'Hit a target estimated one-rep max (Epley formula)' },
-  bw_multiple: { label: 'Bodyweight ×',     unit: '×',   icon: '⚖️', description: 'Lift a multiple of your current body weight (live ratio)' },
-  body_weight: { label: 'Target Body Weight', unit: 'kg', icon: '📉', description: 'Reach a specific body weight' },
+const GOAL_TYPE_META: Record<GoalType, {
+  label:       string
+  unit:        string
+  icon:        string
+  description: string
+  fullWidth?:  boolean   // spans 2 columns in the picker grid
+}> = {
+  max_weight:  { label: 'Max Weight',         unit: 'kg',  icon: '🏋️', description: 'Hit a target training weight for this exercise' },
+  '1rm':       { label: 'Estimated 1RM',      unit: 'kg',  icon: '💪', description: 'Hit a target estimated one-rep max (Epley formula)' },
+  bw_multiple: { label: 'Bodyweight ×',       unit: '×',   icon: '⚖️', description: 'Lift a multiple of your current body weight (live ratio)' },
+  body_weight: { label: 'Target Body Weight', unit: 'kg',  icon: '📉', description: 'Reach a specific body weight' },
+  weight_reps: {
+    label:       'Weight × Reps',
+    unit:        'kg',
+    icon:        '🔢',
+    description: 'Complete a specific number of reps at a target weight — e.g. 5 × 150 kg',
+    fullWidth:   true,
+  },
 }
 
 function formatDate(iso: string | null): string {
@@ -60,19 +74,23 @@ function deadlinePreset(months: number): string {
 function formatCurrentValue(goal: ComputedGoal): string {
   if (goal.current_value === null) return '—'
   switch (goal.goal_type) {
-    case 'max_weight': return `${goal.current_value.toFixed(1)} kg`
-    case '1rm':        return `~${goal.current_value.toFixed(0)} kg`
-    case 'bw_multiple':return `${goal.current_value.toFixed(2)}×`
-    case 'body_weight':return `${goal.current_value.toFixed(1)} kg`
+    case 'max_weight':  return `${goal.current_value.toFixed(1)} kg`
+    case '1rm':         return `~${goal.current_value.toFixed(0)} kg`
+    case 'bw_multiple': return `${goal.current_value.toFixed(2)}×`
+    case 'body_weight': return `${goal.current_value.toFixed(1)} kg`
+    case 'weight_reps':
+      if (goal.current_value === 0) return `0 × ${goal.target_value} kg`
+      return `${goal.current_value} × ${goal.target_value}+ kg`
   }
 }
 
 function formatTargetValue(goal: ComputedGoal): string {
   switch (goal.goal_type) {
-    case 'max_weight': return `${goal.target_value.toFixed(1)} kg`
-    case '1rm':        return `${goal.target_value.toFixed(0)} kg`
-    case 'bw_multiple':return `${goal.target_value.toFixed(2)}×`
-    case 'body_weight':return `${goal.target_value.toFixed(1)} kg`
+    case 'max_weight':  return `${goal.target_value.toFixed(1)} kg`
+    case '1rm':         return `${goal.target_value.toFixed(0)} kg`
+    case 'bw_multiple': return `${goal.target_value.toFixed(2)}×`
+    case 'body_weight': return `${goal.target_value.toFixed(1)} kg`
+    case 'weight_reps': return `${goal.target_reps} × ${goal.target_value} kg`
   }
 }
 
@@ -174,9 +192,9 @@ function GoalCard({ goal, onDelete, isDeleting }: {
   onDelete:   () => void
   isDeleting: boolean
 }) {
-  const meta      = GOAL_TYPE_META[goal.goal_type]
-  const track     = isOnTrack(goal)
-  const rateStr   = formatWeeklyRate(goal)
+  const meta       = GOAL_TYPE_META[goal.goal_type]
+  const track      = isOnTrack(goal)
+  const rateStr    = formatWeeklyRate(goal)
   const isAchieved = !!goal.achieved_at
 
   return (
@@ -224,6 +242,14 @@ function GoalCard({ goal, onDelete, isDeleting }: {
               style={{ width: `${goal.progress_pct}%` }}
             />
           </div>
+          {/* weight_reps: also show reps progress at target weight */}
+          {goal.goal_type === 'weight_reps' && goal.target_reps !== null && (
+            <p className="text-[10px] text-gray-400 mt-1">
+              {goal.current_value === 0
+                ? `No sets at ${goal.target_value} kg yet`
+                : `Best at ${goal.target_value}+ kg: ${goal.current_value} / ${goal.target_reps} reps`}
+            </p>
+          )}
         </div>
       )}
 
@@ -331,6 +357,8 @@ function AddGoalForm({
                 type="button"
                 onClick={() => setGoalType(type)}
                 className={`flex flex-col items-start p-3 rounded-xl border text-left transition-all ${
+                  m.fullWidth ? 'col-span-2' : ''
+                } ${
                   goalType === type
                     ? 'border-gray-900 bg-gray-900 text-white'
                     : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-gray-400'
@@ -372,27 +400,59 @@ function AddGoalForm({
           </div>
         )}
 
-        {/* Target value */}
-        <div>
-          <label className="text-xs font-semibold text-gray-500 mb-1 block">
-            Target value ({meta.unit})
-            {goalType === 'bw_multiple' && currentBodyWeight && (
-              <span className="text-gray-400 font-normal ml-1">
-                — e.g. 2.0 = {(2.0 * currentBodyWeight).toFixed(0)} kg at current BW
-              </span>
-            )}
-          </label>
-          <input
-            name="target_value"
-            type="number"
-            step={goalType === 'bw_multiple' ? '0.05' : '0.5'}
-            min={goalType === 'bw_multiple' ? '0.1' : '1'}
-            max={goalType === 'bw_multiple' ? '10' : '1000'}
-            required
-            placeholder={goalType === 'bw_multiple' ? 'e.g. 2.0' : 'e.g. 100'}
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-gray-900"
-          />
-        </div>
+        {/* Weight × Reps: two side-by-side inputs */}
+        {goalType === 'weight_reps' ? (
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Target weight (kg)</label>
+              <input
+                name="target_value"
+                type="number"
+                step="0.5"
+                min="1"
+                max="1000"
+                required
+                placeholder="e.g. 150"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Target reps</label>
+              <input
+                name="target_reps"
+                type="number"
+                step="1"
+                min="1"
+                max="50"
+                required
+                placeholder="e.g. 5"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+          </div>
+        ) : (
+          /* Single target value for all other types */
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">
+              Target value ({meta.unit})
+              {goalType === 'bw_multiple' && currentBodyWeight && (
+                <span className="text-gray-400 font-normal ml-1">
+                  — e.g. 2.0 = {(2.0 * currentBodyWeight).toFixed(0)} kg at current BW
+                </span>
+              )}
+            </label>
+            <input
+              name="target_value"
+              type="number"
+              step={goalType === 'bw_multiple' ? '0.05' : '0.5'}
+              min={goalType === 'bw_multiple' ? '0.1' : '1'}
+              max={goalType === 'bw_multiple' ? '10' : '1000'}
+              required
+              placeholder={goalType === 'bw_multiple' ? 'e.g. 2.0' : 'e.g. 100'}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-gray-900"
+            />
+          </div>
+        )}
 
         {/* Custom label */}
         <div>
