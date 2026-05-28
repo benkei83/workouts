@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 type Props = {
   searchParams: Promise<{ error?: string }>;
 };
