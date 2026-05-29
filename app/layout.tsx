@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import WorkoutTimer from "@/components/WorkoutTimer";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import IOSInstallPrompt from "@/components/IOSInstallPrompt";
+import AppNav from "@/components/AppNav";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -60,6 +61,8 @@ export default function RootLayout({
           </Suspense>
 
           {children}
+
+          <AppNav />
 
           {/* PWA: register service worker */}
           <ServiceWorkerRegistration />

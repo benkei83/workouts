@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { signOut } from '@/app/actions'
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { computeWorkoutOutcomes, computeWorkoutStreak } from '@/lib/workoutOutcomes'
@@ -71,13 +72,6 @@ async function startWorkout() {
 
   revalidatePath('/')
   redirect(`/workout/${workout.id}`)
-}
-
-async function signOut() {
-  'use server'
-  const supabase = await createClient()
-  await supabase.auth.signOut()
-  revalidatePath('/')
 }
 
 // ==========================================
