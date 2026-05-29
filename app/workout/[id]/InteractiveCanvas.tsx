@@ -1,6 +1,17 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+// In-memory store: survives SPA navigations (module stays loaded between routes).
+// sessionStorage: survives router-cache evictions and hard reloads within the tab.
+// Both are read synchronously in the useState initialiser — no effect timing races.
+const _activeModuleStore: Record<string, 'strength' | 'cardio' | 'superset'> = {}
+const SS_MODULE_KEY = (id: string) => `wkt-${id}-module`
+
+import { useState, useTransition, useEffect, useLayoutEffect, useRef } from 'react'
+
+// useLayoutEffect runs synchronously after DOM commit (before paint), so the stores
+// are always written before the user can interact again. Falls back to useEffect on
+// the server where layout effects are a no-op.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
 import SupersetForm from '@/components/SupersetForm'
@@ -86,7 +97,18 @@ export function InteractiveCanvas({
   historicalBests?: Record<string, { best1rm: number; bestVolume: number }>
   userSettings?: UserSettings
 }) {
-  const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>('none')
+  const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>(() => {
+    if (isFinished) return 'none'
+    // 1. In-memory (fastest — same JS session)
+    const mem = _activeModuleStore[workoutId]
+    if (mem) return mem
+    // sessionStorage fallback (survives router-cache evictions / hard reloads)
+    try {
+      const ss = sessionStorage.getItem(SS_MODULE_KEY(workoutId))
+      if (ss === 'strength' || ss === 'cardio' || ss === 'superset') return ss
+    } catch {}
+    return 'none'
+  })
   const [editData, setEditData] = useState<any>(null)
   const [editSupersetData, setEditSupersetData] = useState<StrengthCard[] | null>(null)
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null)
@@ -281,7 +303,22 @@ export function InteractiveCanvas({
     }
   }
 
+  // Keep both stores in sync after every activeModule change
+  useIsomorphicLayoutEffect(() => {
+    if (isFinished) return
+    const key = SS_MODULE_KEY(workoutId)
+    if (activeModule === 'strength' || activeModule === 'cardio' || activeModule === 'superset') {
+      _activeModuleStore[workoutId] = activeModule
+      try { sessionStorage.setItem(key, activeModule) } catch {}
+    } else {
+      delete _activeModuleStore[workoutId]
+      try { sessionStorage.removeItem(key) } catch {}
+    }
+  }, [activeModule, workoutId, isFinished])
+
   const closeForm = () => {
+    delete _activeModuleStore[workoutId]
+    try { sessionStorage.removeItem(SS_MODULE_KEY(workoutId)) } catch {}
     setActiveModule('none')
     setEditData(null)
     setEditSupersetData(null)

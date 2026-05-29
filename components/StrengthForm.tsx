@@ -1,6 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+// In-memory store + sessionStorage backup — see InteractiveCanvas for rationale.
+type StrengthDraft = { selectedExercise: string; sets: { weight: number; reps: number; rpe?: number | null }[] }
+const _draftStore: Record<string, StrengthDraft> = {}
+const SS_DRAFT_KEY = (id: string) => `wkt-${id}-strength-draft`
+
+function readDraft(workoutId: string, exercises: { id: string }[]): StrengthDraft | null {
+  const mem = _draftStore[workoutId]
+  if (mem?.selectedExercise && mem.sets?.length && exercises.find(e => e.id === mem.selectedExercise)) {
+    return mem
+  }
+  try {
+    const raw = sessionStorage.getItem(SS_DRAFT_KEY(workoutId))
+    if (raw) {
+      const d: StrengthDraft = JSON.parse(raw)
+      if (d?.selectedExercise && d.sets?.length && exercises.find(e => e.id === d.selectedExercise)) {
+        return d
+      }
+    }
+  } catch {}
+  return null
+}
+
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { saveStrengthExercise, deleteStrengthLog, createCustomExercise, updateExerciseSettings } from '@/app/workout/actions'
 import ExerciseSettingsFields from '@/components/ExerciseSettingsFields'
@@ -49,7 +71,20 @@ export default function StrengthForm({
 }) {
   // Local augmentable copy of exercises — so wger-added ones appear immediately
   const [exerciseList, setExerciseList] = useState(exercises)
-  const [selectedExercise, setSelectedExercise] = useState(editData?.exerciseId || exercises[0]?.id || '')
+
+  // ── Draft restoration ─────────────────────────────────────────────────────
+  // Read synchronously (memory → sessionStorage) so useState initialisers can use
+  // the value directly — no useEffect timing races possible.
+  const draft = !editData ? readDraft(workoutId, exercises) : undefined
+
+  const [selectedExercise, setSelectedExercise] = useState(() => {
+    if (editData?.exerciseId) return editData.exerciseId
+    if (draft?.selectedExercise && exercises.find(e => e.id === draft.selectedExercise)) {
+      return draft.selectedExercise
+    }
+    return exercises[0]?.id || ''
+  })
+
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
@@ -75,7 +110,7 @@ export default function StrengthForm({
 
   const libraryNames = new Set(exerciseList.map(e => e.name.toLowerCase()))
 
-  // Initialize state from existing data OR the active exercise's default settings
+  // Initialize state from existing data, a restored draft, or exercise defaults
   const [sets, setSets] = useState<SetData[]>(() => {
     if (editData?.rawSets) {
       // Preserve RPE values when editing an existing log
@@ -85,6 +120,9 @@ export default function StrengthForm({
         rpe: s.rpe ?? null,
       }))
     }
+
+    // Restore sets from draft (selectedExercise is already resolved above)
+    if (draft?.sets && draft.sets.length > 0) return draft.sets
 
     const defaultEx = exercises.find(ex => ex.id === selectedExercise)
     const tSets = defaultEx?.settings?.target_sets || initialSets
@@ -98,12 +136,25 @@ export default function StrengthForm({
     }))
   })
 
+  // When a draft was restored, suppress pre-fill until the user explicitly picks a
+  // different exercise. The flag is cleared in changeExercise() — NOT inside the
+  // effect — so Strict Mode's double-invocation can't accidentally flip it.
+  const suppressPreFillRef = useRef(!!(draft?.sets?.length && !editData))
+
+  // Wrapper used everywhere we set selectedExercise: clears the draft-guard so
+  // pre-fill runs normally after the user has made a deliberate exercise choice.
+  const changeExercise = (id: string) => {
+    suppressPreFillRef.current = false
+    setSelectedExercise(id)
+  }
+
   const activeExerciseData = exerciseList.find(ex => ex.id === selectedExercise)
   const currentIncrement = activeExerciseData?.increment_step || 2.5
 
   // SMART PRE-FILL: Auto-update the UI when the user selects a different exercise
   useEffect(() => {
     if (!editData && activeExerciseData) {
+      if (suppressPreFillRef.current) return  // restored draft — keep its sets
       const tSets = activeExerciseData.settings?.target_sets || initialSets
       const tReps = activeExerciseData.settings?.target_reps || initialReps
       const tWeight = activeExerciseData.settings?.current_weight || initialWeight
@@ -115,6 +166,15 @@ export default function StrengthForm({
       })))
     }
   }, [selectedExercise, activeExerciseData, editData, initialSets, initialReps, initialWeight])
+
+  // Keep both stores up to date synchronously after every commit (useLayoutEffect runs
+  // before paint, so the store is always current before the user can trigger navigation)
+  useLayoutEffect(() => {
+    if (editData) return
+    const d: StrengthDraft = { selectedExercise, sets }
+    _draftStore[workoutId] = d
+    try { sessionStorage.setItem(SS_DRAFT_KEY(workoutId), JSON.stringify(d)) } catch {}
+  }, [selectedExercise, sets, workoutId, editData])
 
   const handleInlineCreate = async () => {
     const input = document.getElementById('new-exercise-input') as HTMLInputElement
@@ -129,7 +189,7 @@ export default function StrengthForm({
     const res = await createCustomExercise(formData)
     
     if (res?.success && res.id) {
-      setSelectedExercise(res.id)
+      changeExercise(res.id)
       setUiMode('select')
     }
     setIsSubmitting(false)
@@ -186,7 +246,13 @@ export default function StrengthForm({
     setSets(sets.filter((_, index) => index !== indexToRemove))
   }
 
+  const clearDraft = () => {
+    delete _draftStore[workoutId]
+    try { sessionStorage.removeItem(SS_DRAFT_KEY(workoutId)) } catch {}
+  }
+
   const handleSave = async () => {
+    clearDraft()
     // ── Optimistic path (new exercise, canvas owns the server call) ──
     if (onSave && !editData) {
       const exerciseName = exercises.find(e => e.id === selectedExercise)?.name || 'Exercise'
@@ -211,7 +277,7 @@ export default function StrengthForm({
     <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-bold text-gray-900">🏋️ {editData ? 'Edit' : 'Log'} Lifts</h2>
-        <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-900 font-bold p-2">✕</button>
+        <button type="button" onClick={() => { clearDraft(); onCancel() }} className="text-gray-400 hover:text-gray-900 font-bold p-2">✕</button>
       </div>
 
       <div className="mb-6">
@@ -223,7 +289,7 @@ export default function StrengthForm({
             <div className="flex gap-2">
               <select
                 value={selectedExercise}
-                onChange={(e) => setSelectedExercise(e.target.value)}
+                onChange={(e) => changeExercise(e.target.value)}
                 className="flex-1 min-w-0 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl px-4 py-3 font-bold text-lg outline-none focus:ring-2 focus:ring-black appearance-none truncate"
               >
                 {exerciseList.map(ex => (
@@ -414,7 +480,7 @@ export default function StrengthForm({
           onAdded={(item: WgerItem, id: string) => {
             // Add to local list so it appears in the dropdown immediately
             setExerciseList(prev => [...prev, { id, name: item.name, increment_step: 2.5, settings: null }])
-            setSelectedExercise(id)
+            changeExercise(id)
             setIsWgerOpen(false)
           }}
         />
