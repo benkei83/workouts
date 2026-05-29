@@ -62,7 +62,9 @@ export default function RootLayout({
 
           {children}
 
-          <AppNav />
+          <Suspense fallback={null}>
+            <AppNav />
+          </Suspense>
 
           {/* PWA: register service worker */}
           <ServiceWorkerRegistration />
