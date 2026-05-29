@@ -170,14 +170,15 @@ export function InteractiveCanvas({
   const handleSaveStrength = async (
     exerciseId: string,
     exerciseName: string,
-    sets: { weight: number; reps: number; rpe?: number | null }[]
+    sets: { weight: number; reps: number; rpe?: number | null }[],
+    skipProgression: boolean = false
   ) => {
     const pendingId = crypto.randomUUID()
 
     enqueuePendingOp({ id: pendingId, workoutId, type: 'strength', exerciseId, sets, timestamp: Date.now() })
     setPendingCards(prev => [...prev, { pendingId, type: 'strength', exerciseId, name: exerciseName, sets, status: 'saving' }])
 
-    const result = await saveStrengthExercise(workoutId, exerciseId, sets)
+    const result = await saveStrengthExercise(workoutId, exerciseId, sets, { skipProgression })
     if (result?.error) {
       setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
     } else {

@@ -107,7 +107,7 @@ export async function saveStrengthExercise(
   workoutId: string,
   exerciseId: string,
   sets: { weight: number; reps: number; rpe?: number | null }[],
-  options?: { createdAt?: string, supersetId?: string }
+  options?: { createdAt?: string, supersetId?: string, skipProgression?: boolean }
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -181,7 +181,12 @@ export async function saveStrengthExercise(
     }
   }
 
-  // 2. THE PROGRESSION ENGINE
+  // 2. THE PROGRESSION ENGINE (skipped when the user explicitly opts out)
+  if (options?.skipProgression) {
+    revalidatePath(`/workout/${workoutId}`)
+    return { success: true }
+  }
+
   const { data: setting } = await supabase
     .from('user_exercise_settings')
     .select('*')
@@ -207,13 +212,19 @@ export async function saveStrengthExercise(
     // Cheated sets are excluded — they shouldn't trigger a weight increase.
     const cleanSets = sets.filter(s => s.rpe == null || Number(s.rpe) <= 10)
 
-    const completedSetsCount = cleanSets.length
-    const allSetsHitTarget = cleanSets.every(s => Number(s.reps) >= targetReps)
+    // "Qualifying sets" are clean sets that hit the target rep count.
+    // Extra backoff sets (fewer reps) are ignored for the success check and
+    // weight baseline — they shouldn't penalise a session that already hit the target.
+    const qualifyingSets   = cleanSets.filter(s => Number(s.reps) >= targetReps)
+    const completedSetsCount = qualifyingSets.length          // only count sets that hit reps
+    const allSetsHitTarget   = completedSetsCount >= targetSets
 
-    // Base weight on clean sets only. Fall back to stored target if all sets were cheated.
-    const actualWeight = cleanSets.length > 0
-      ? Math.min(...cleanSets.map(s => Number(s.weight)))
-      : newWeight
+    // Base weight on qualifying sets only so backoff sets can't drag the baseline down.
+    const actualWeight = qualifyingSets.length > 0
+      ? Math.min(...qualifyingSets.map(s => Number(s.weight)))
+      : cleanSets.length > 0
+        ? Math.min(...cleanSets.map(s => Number(s.weight)))   // fallback if no set hit target
+        : newWeight
 
     // Fetch the most-recent inactive settings row to detect a deload recovery.
     // If the current active weight is lower than the previous row's weight, the
@@ -258,11 +269,18 @@ export async function saveStrengthExercise(
         changed = true
       }
     } else if (setting.protocol === 'double') {
-      // Rep-range style (e.g. 3×8-12). Lower bound is explicit target_reps_min (default 8).
-      const lowerBound = Math.max(1, Number(setting.target_reps_min) || 8)
-      const allSetsHitMaintain = cleanSets.every(s => Number(s.reps) >= lowerBound)
+      // Rep-range style (e.g. 3×8-12). Lower bound is target_reps_min (default 8).
+      // "Maintaining sets" hit at least the lower bound — extra backoff sets below
+      // the lower bound are excluded from the maintenance check for the same reason
+      // qualifying sets exclude them from the success check.
+      const lowerBound     = Math.max(1, Number(setting.target_reps_min) || 8)
+      const maintainingSets = cleanSets.filter(s => Number(s.reps) >= lowerBound)
+      const maintainWeight  = maintainingSets.length > 0
+        ? Math.min(...maintainingSets.map(s => Number(s.weight)))
+        : actualWeight
 
-      if (completedSetsCount >= targetSets && allSetsHitTarget) {
+      if (qualifyingSets.length >= targetSets) {
+        // Full success: enough sets hit the upper rep target
         isPerfectSession = true
         newSuccesses += 1
         newFailures = 0
@@ -273,12 +291,12 @@ export async function saveStrengthExercise(
           newWeight = actualWeight
         }
         changed = true
-      } else if (completedSetsCount >= targetSets && allSetsHitMaintain) {
-        // Maintenance: forgive streaks, track actual weight
-        if (newFailures !== 0 || newSuccesses !== 0 || actualWeight !== newWeight) {
+      } else if (maintainingSets.length >= targetSets) {
+        // Maintenance: enough sets hit the lower bound (but not the upper)
+        if (newFailures !== 0 || newSuccesses !== 0 || maintainWeight !== newWeight) {
           newFailures = 0
           newSuccesses = 0
-          newWeight = actualWeight
+          newWeight = maintainWeight
           changed = true
         }
       } else {

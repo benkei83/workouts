@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from 'react'
 import { createGoal, deleteGoal } from '@/app/goals/actions'
+import { estimateOneRM } from '@/lib/stats/compute'
 
 // ── Shared types (exported for page.tsx) ──────────────────────────────────────
 
@@ -21,6 +22,7 @@ export interface ComputedGoal {
   exercise_name:  string | null
   // Computed server-side
   current_value:  number | null
+  current_1rm:    number | null   // best estimated 1RM for this exercise
   weekly_rate:    number | null   // kg/wk (or ratio/wk for bw_multiple)
   eta_date:       string | null   // ISO date
   progress_pct:   number          // 0–100
@@ -269,6 +271,29 @@ function GoalCard({ goal, onDelete, isDeleting }: {
           </p>
         </div>
       </div>
+
+      {/* 1RM context row — weight_reps and max_weight goals */}
+      {(goal.goal_type === 'weight_reps' || goal.goal_type === 'max_weight') && (
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1 bg-gray-50 rounded-xl p-2.5 text-center">
+            <p className="text-[9px] text-gray-400 font-medium mb-0.5 uppercase tracking-wide">Current 1RM</p>
+            <p className="text-sm font-bold text-gray-600 tabular-nums">
+              {goal.current_1rm ? `~${Math.round(goal.current_1rm)} kg` : '—'}
+            </p>
+          </div>
+          <span className="text-gray-200 font-bold text-xs">→</span>
+          <div className="flex-1 bg-gray-50 rounded-xl p-2.5 text-center">
+            <p className="text-[9px] text-gray-400 font-medium mb-0.5 uppercase tracking-wide">
+              {goal.goal_type === 'weight_reps' ? 'Goal 1RM' : 'Target ~1RM'}
+            </p>
+            <p className="text-sm font-bold text-gray-600 tabular-nums">
+              {goal.goal_type === 'weight_reps' && goal.target_reps
+                ? `~${Math.round(estimateOneRM(goal.target_value, goal.target_reps))} kg`
+                : `~${Math.round(goal.target_value)} kg`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Footer: rate, ETA, deadline */}
       {!isAchieved && (

@@ -62,7 +62,7 @@ export default function StrengthForm({
   exercises: Exercise[],
   onCancel: () => void,
   /** When provided (new-exercise flow), the canvas owns the server call — form just hands off data and closes. */
-  onSave?: (exerciseId: string, exerciseName: string, sets: SetData[]) => void,
+  onSave?: (exerciseId: string, exerciseName: string, sets: SetData[], skipProgression: boolean) => void,
   initialSets?: number,
   initialReps?: number,
   initialWeight?: number,
@@ -89,6 +89,7 @@ export default function StrengthForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
   const [isWgerOpen, setIsWgerOpen] = useState(false)
+  const [skipProgression, setSkipProgression] = useState(false)
 
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
@@ -256,7 +257,7 @@ export default function StrengthForm({
     // ── Optimistic path (new exercise, canvas owns the server call) ──
     if (onSave && !editData) {
       const exerciseName = exercises.find(e => e.id === selectedExercise)?.name || 'Exercise'
-      onSave(selectedExercise, exerciseName, sets)
+      onSave(selectedExercise, exerciseName, sets, skipProgression)
       onCancel()
       return
     }
@@ -267,6 +268,7 @@ export default function StrengthForm({
     const result = await saveStrengthExercise(workoutId, selectedExercise, sets, {
       createdAt: editData?.createdAt,
       supersetId: editData?.supersetId,
+      skipProgression,
     })
     setIsSubmitting(false)
     if (result?.error) alert(`Database Error: ${result.error}`)
@@ -467,6 +469,23 @@ export default function StrengthForm({
       <button type="button" onClick={addSet} className="w-full border-2 border-dashed border-gray-200 text-gray-500 font-bold rounded-xl py-3 mb-4 hover:border-black transition-colors">
         + Add Set
       </button>
+
+      {/* Skip progression toggle — only shown when the exercise has an active auto-progression protocol */}
+      {activeExerciseData?.settings?.protocol && activeExerciseData.settings.protocol !== 'manual' && (
+        <button
+          type="button"
+          onClick={() => setSkipProgression(p => !p)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 mb-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="text-left">
+            <p className="text-sm font-semibold text-gray-700">Skip progression</p>
+            <p className="text-xs text-gray-400">Log this session without updating weight targets</p>
+          </div>
+          <div className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${skipProgression ? 'bg-gray-700' : 'bg-gray-200'}`}>
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${skipProgression ? 'translate-x-5' : 'translate-x-0'}`} />
+          </div>
+        </button>
+      )}
 
       <button type="button" onClick={handleSave} disabled={isSubmitting || uiMode !== 'select'} className="w-full bg-black text-white font-bold rounded-xl py-4 shadow-md hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50">
         {isSubmitting ? 'Saving...' : (editData ? 'Update Exercise' : 'Save Exercise')}

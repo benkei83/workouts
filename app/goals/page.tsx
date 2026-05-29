@@ -199,6 +199,9 @@ async function GoalsLoader() {
     let progress_pct               = 0
 
     const sessions = exId ? (exSessionsMap.get(exId) || []) : []
+    const current_1rm = sessions.length > 0
+      ? Math.max(...sessions.map(s => s.best_1rm))
+      : null
 
     if (gt === 'body_weight') {
       current_value = currentBW
@@ -266,6 +269,7 @@ async function GoalsLoader() {
       exercise_id:    exId,
       exercise_name:  exName,
       current_value,
+      current_1rm,
       weekly_rate,
       eta_date,
       progress_pct,
