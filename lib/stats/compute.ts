@@ -297,6 +297,86 @@ export function computeExerciseStats(history: ExerciseHistorySession[]): Exercis
   }
 }
 
+// ── Rep-max ladder ────────────────────────────────────────────────────────────
+
+export type RepMaxEntry = {
+  reps: number              // the "N+ reps" target
+  weight: number            // heaviest weight ever lifted for at least N reps
+  estimatedOneRM: number    // Epley e1RM derived from that set
+  actualReps: number        // the real rep count of the set that set this record
+  date: string              // ISO timestamp it was achieved
+}
+
+/**
+ * For each target rep count, find the heaviest clean set performed for AT LEAST
+ * that many reps. Produces a monotonic ladder (1RM ≥ 3RM ≥ 5RM …) with no gaps.
+ */
+export function computeRepMaxes(
+  sets: { weight: number; reps: number; date: string }[],
+  repTargets: number[] = [1, 3, 5, 8, 10, 12],
+): RepMaxEntry[] {
+  const result: RepMaxEntry[] = []
+  for (const target of repTargets) {
+    let best: { weight: number; reps: number; date: string } | null = null
+    for (const s of sets) {
+      if (s.reps < target || s.weight <= 0) continue
+      if (!best || s.weight > best.weight) best = s
+    }
+    if (best) {
+      result.push({
+        reps: target,
+        weight: best.weight,
+        estimatedOneRM: estimateOneRM(best.weight, best.reps),
+        actualReps: best.reps,
+        date: best.date,
+      })
+    }
+  }
+  return result
+}
+
+// ── Exercise frequency ──────────────────────────────────────────────────────
+
+export type ExerciseFrequency = {
+  totalSessions: number
+  lastPerformed: string | null
+  daysSinceLast: number | null
+  sessionsLast30: number
+  sessionsLast90: number
+  avgDaysBetween: number | null
+}
+
+export function computeExerciseFrequency(
+  history: ExerciseHistorySession[],
+  now: number = Date.now(),
+): ExerciseFrequency {
+  if (history.length === 0) {
+    return {
+      totalSessions: 0, lastPerformed: null, daysSinceLast: null,
+      sessionsLast30: 0, sessionsLast90: 0, avgDaysBetween: null,
+    }
+  }
+  const dates = history
+    .map(h => new Date(h.workoutDate).getTime())
+    .sort((a, b) => a - b)
+  const last = dates[dates.length - 1]
+  const DAY = 86_400_000
+
+  let avgDaysBetween: number | null = null
+  if (dates.length >= 2) {
+    avgDaysBetween = Math.round(((dates[dates.length - 1] - dates[0]) / DAY) / (dates.length - 1))
+  }
+
+  return {
+    totalSessions: history.length,
+    lastPerformed: new Date(last).toISOString(),
+    daysSinceLast: Math.floor((now - last) / DAY),
+    sessionsLast30: dates.filter(d => now - d <= 30 * DAY).length,
+    sessionsLast90: dates.filter(d => now - d <= 90 * DAY).length,
+    avgDaysBetween,
+  }
+}
+
 // ── Session Best Sets (WorkoutStatsPanel — Section A) ─────────────────────────
 
 export type SessionBestSet = {

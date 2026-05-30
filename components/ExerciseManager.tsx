@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, useMemo, useEffect } from 'react'
+import Link from 'next/link'
 import {
   createCustomExercise,
   updateExerciseSettings,
@@ -312,7 +313,15 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-md rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4 flex flex-col max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start px-6 pt-6 pb-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-xl font-bold text-gray-900">{editingExercise.name}</h2>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">{editingExercise.name}</h2>
+                <Link
+                  href={`/exercises/${editingExercise.id}`}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  View full stats →
+                </Link>
+              </div>
               <button onClick={() => setEditingExercise(null)} className="text-gray-400 font-bold p-2 mt-[-4px]">✕</button>
             </div>
             <div className="px-6 py-5 space-y-6">
