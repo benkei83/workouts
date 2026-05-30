@@ -34,9 +34,17 @@ async function SettingsContent() {
       .eq('user_id', user.id)
       .maybeSingle()
 
+    const defaultName = user.email?.split('@')[0] ?? null
+
     if (data) {
+      // If stored name is null, backfill with email prefix and save it
+      const resolvedName = data.screen_name ?? defaultName
+      if (!data.screen_name && resolvedName) {
+        await supabase.from('user_settings')
+          .upsert({ user_id: user.id, screen_name: resolvedName }, { onConflict: 'user_id' })
+      }
       settings = {
-        screen_name:              data.screen_name              ?? null,
+        screen_name:              resolvedName,
         show_trophy_toasts:       data.show_trophy_toasts       ?? DEFAULT_USER_SETTINGS.show_trophy_toasts,
         rest_timer_default_secs:  data.rest_timer_default_secs  ?? DEFAULT_USER_SETTINGS.rest_timer_default_secs,
         vibrate_on_rest_complete: data.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
@@ -44,6 +52,12 @@ async function SettingsContent() {
         auto_share_workouts:      data.auto_share_workouts      ?? DEFAULT_USER_SETTINGS.auto_share_workouts,
         height_cm:                data.height_cm != null ? Number(data.height_cm) : null,
       }
+    }
+    if (!data && defaultName) {
+      // No row yet — create one with the email-derived name
+      await supabase.from('user_settings')
+        .upsert({ user_id: user.id, screen_name: defaultName }, { onConflict: 'user_id' })
+      settings.screen_name = defaultName
     }
   } catch { /* table not migrated yet — use defaults */ }
 

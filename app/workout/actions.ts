@@ -601,7 +601,7 @@ export async function finishWorkoutWithFeel(
             user_id:      user.id,
             workout_id:   workoutId,
             post_type:    'workout',
-            screen_name:  userSettings?.screen_name ?? null,
+            screen_name:  userSettings?.screen_name ?? user.email?.split('@')[0] ?? null,
             workout_title: wData.title,
             workout_summary: {
               duration_mins: Number(wData.total_duration_mins) || 0,
@@ -771,7 +771,7 @@ export async function shareWorkoutToFeed(workoutId: string): Promise<{ ok: true;
     user_id:       user.id,
     workout_id:    workoutId,
     post_type:     'workout',
-    screen_name:   userSettings?.screen_name ?? null,
+    screen_name:   userSettings?.screen_name ?? user.email?.split('@')[0] ?? null,
     workout_title: wData.title,
     workout_summary,
   }).select('id').single()

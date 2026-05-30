@@ -49,7 +49,7 @@ export async function addComment(
     .insert({
       post_id:     postId,
       user_id:     user.id,
-      screen_name: settings?.screen_name ?? null,
+      screen_name: settings?.screen_name ?? user.email?.split('@')[0] ?? null,
       content:     trimmed,
     })
     .select('id, user_id, screen_name, content, created_at')
