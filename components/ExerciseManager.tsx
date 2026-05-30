@@ -112,21 +112,31 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
 
   const handleUpdateSettings = (formData: FormData) => {
     if (!editingExercise) return
+    const prMinRaw = formData.get('pr_min_weight') as string
+    const newSettings = {
+      sets: parseInt(formData.get('sets') as string) || 5,
+      reps: parseInt(formData.get('reps') as string) || 5,
+      reps_min: parseInt(formData.get('reps_min') as string) || 8,
+      weight: parseFloat(formData.get('weight') as string) || 0,
+      increment: parseFloat(formData.get('increment') as string) || 2.5,
+      progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
+      protocol: formData.get('protocol') as string,
+      min_successes: parseInt(formData.get('min_successes') as string) || 1,
+      max_failures: parseInt(formData.get('max_failures') as string) || 3,
+      deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+      current_failures: editingExercise.settings?.current_failures || 0,
+      current_successes: editingExercise.settings?.current_successes || 0,
+      suppress_prs: formData.get('suppress_prs') === 'on',
+      pr_min_weight: prMinRaw ? parseFloat(prMinRaw) || null : null,
+    }
     startTransition(async () => {
-      await updateExerciseSettings(editingExercise.id, {
-        sets: parseInt(formData.get('sets') as string) || 5,
-        reps: parseInt(formData.get('reps') as string) || 5,
-        reps_min: parseInt(formData.get('reps_min') as string) || 8,
-        weight: parseFloat(formData.get('weight') as string) || 0,
-        increment: parseFloat(formData.get('increment') as string) || 2.5,
-        progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
-        protocol: formData.get('protocol') as string,
-        min_successes: parseInt(formData.get('min_successes') as string) || 1,
-        max_failures: parseInt(formData.get('max_failures') as string) || 3,
-        deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
-        current_failures: editingExercise.settings?.current_failures || 0,
-        current_successes: editingExercise.settings?.current_successes || 0,
-      })
+      await updateExerciseSettings(editingExercise.id, newSettings)
+      // Update local state so modal shows correct values if reopened
+      setExercises(prev => prev.map(e =>
+        e.id === editingExercise.id
+          ? { ...e, settings: { ...e.settings, ...newSettings, target_sets: newSettings.sets, target_reps: newSettings.reps, current_weight: newSettings.weight } }
+          : e
+      ))
       setEditingExercise(null)
     })
   }
@@ -359,10 +369,48 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
               {/* Training settings */}
               <div>
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Training Settings</p>
-                <form action={handleUpdateSettings}>
+                <form action={handleUpdateSettings} className="space-y-4">
                   <ExerciseSettingsFields settings={editingExercise.settings} exerciseId={editingExercise.id} exerciseName={editingExercise.name} />
+
+                  {/* PR notifications */}
+                  <div className="border-t border-gray-100 pt-4 space-y-3">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">PR Notifications</p>
+
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">Suppress all PR badges</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Never mark sets as PRs for this exercise</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        name="suppress_prs"
+                        defaultChecked={editingExercise.settings?.suppress_prs ?? false}
+                        className="w-5 h-5 rounded accent-gray-900 cursor-pointer"
+                      />
+                    </label>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800 mb-1">
+                        Suppress until I lift at least
+                      </label>
+                      <p className="text-xs text-gray-400 mb-2">PRs are ignored until you reach this weight. Leave empty to disable.</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          name="pr_min_weight"
+                          min="0"
+                          step="2.5"
+                          defaultValue={editingExercise.settings?.pr_min_weight ?? ''}
+                          placeholder="e.g. 100"
+                          className="w-32 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none"
+                        />
+                        <span className="text-sm text-gray-500 font-medium">kg</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <button type="submit" disabled={isPending}
-                    className="w-full bg-black text-white font-bold rounded-xl py-3 mt-4 active:scale-95 transition-all disabled:opacity-50">
+                    className="w-full bg-black text-white font-bold rounded-xl py-3 active:scale-95 transition-all disabled:opacity-50">
                     {isPending ? 'Updating...' : 'Save Settings'}
                   </button>
                 </form>

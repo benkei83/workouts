@@ -151,32 +151,49 @@ export async function saveStrengthExercise(
 
   // ── PR detection (per rep count, clean sets only) ─────────
   // Cheated sets (RPE > 10) are excluded — they don't count as PRs.
-  const cleanInsertedSets = insertedSets.filter((_, i) => {
-    const rpe = sets[i]?.rpe
-    return rpe == null || Number(rpe) <= 10
-  })
-  const uniqueRepCounts = [...new Set(cleanInsertedSets.map(s => Number(s.actual_reps)))]
 
-  for (const reps of uniqueRepCounts) {
-    if (reps <= 0) continue
-    const setsAtReps = cleanInsertedSets.filter(s => Number(s.actual_reps) === reps)
-    const maxWeightAtReps = Math.max(...setsAtReps.map(s => Number(s.actual_weight)))
-    if (maxWeightAtReps <= 0) continue
+  // Check per-exercise PR notification preferences first
+  const { data: prSettings } = await supabase
+    .from('user_exercise_settings')
+    .select('suppress_prs, pr_min_weight')
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .eq('is_active', true)
+    .maybeSingle()
 
-    const { data: prevBest } = await supabase
-      .from('strength_sets')
-      .select('actual_weight')
-      .eq('exercise_id', exerciseId)
-      .eq('actual_reps', reps)
-      .neq('strength_log_id', strengthLog.id)
-      .order('actual_weight', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+  const suppressPrs   = prSettings?.suppress_prs   ?? false
+  const prMinWeight   = prSettings?.pr_min_weight != null ? Number(prSettings.pr_min_weight) : null
 
-    if (maxWeightAtReps > (prevBest?.actual_weight ?? 0)) {
-      const prSet = setsAtReps.find(s => Number(s.actual_weight) === maxWeightAtReps)
-      if (prSet) {
-        await supabase.from('strength_sets').update({ is_pr: true }).eq('id', prSet.id)
+  if (!suppressPrs) {
+    const cleanInsertedSets = insertedSets.filter((_, i) => {
+      const rpe = sets[i]?.rpe
+      return rpe == null || Number(rpe) <= 10
+    })
+    const uniqueRepCounts = [...new Set(cleanInsertedSets.map(s => Number(s.actual_reps)))]
+
+    for (const reps of uniqueRepCounts) {
+      if (reps <= 0) continue
+      const setsAtReps = cleanInsertedSets.filter(s => Number(s.actual_reps) === reps)
+      const maxWeightAtReps = Math.max(...setsAtReps.map(s => Number(s.actual_weight)))
+      if (maxWeightAtReps <= 0) continue
+      // Skip if below the "suppress until" threshold
+      if (prMinWeight != null && maxWeightAtReps < prMinWeight) continue
+
+      const { data: prevBest } = await supabase
+        .from('strength_sets')
+        .select('actual_weight')
+        .eq('exercise_id', exerciseId)
+        .eq('actual_reps', reps)
+        .neq('strength_log_id', strengthLog.id)
+        .order('actual_weight', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (maxWeightAtReps > (prevBest?.actual_weight ?? 0)) {
+        const prSet = setsAtReps.find(s => Number(s.actual_weight) === maxWeightAtReps)
+        if (prSet) {
+          await supabase.from('strength_sets').update({ is_pr: true }).eq('id', prSet.id)
+        }
       }
     }
   }
@@ -1037,6 +1054,8 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
     min_successes: settings.min_successes || 1,
     current_successes: settings.current_successes || 0,
     deload_multiplier: settings.deload_multiplier || 2.0,
+    suppress_prs: settings.suppress_prs ?? false,
+    pr_min_weight: settings.pr_min_weight ?? null,
     is_active: true
   })
 
