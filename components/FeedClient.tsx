@@ -46,6 +46,7 @@ export interface FeedPost {
   created_at:  string
   like_count:  number
   liked_by_me: boolean
+  liked_by:    { user_id: string; screen_name: string | null }[]
   comments:    FeedComment[]
 }
 
@@ -145,6 +146,8 @@ function FeedCard({
 }) {
   const [liked, setLiked]               = useState(post.liked_by_me)
   const [likeCount, setLikeCount]       = useState(post.like_count)
+  const [likedBy, setLikedBy]           = useState(post.liked_by)
+  const [showLikers, setShowLikers]     = useState(false)
   const [showComments, setShowComments] = useState(false)
   const [comments, setComments]         = useState<FeedComment[]>(post.comments)
   const [commentText, setCommentText]   = useState('')
@@ -159,6 +162,11 @@ function FeedCard({
     const next = !liked
     setLiked(next)
     setLikeCount(c => next ? c + 1 : c - 1)
+    setLikedBy(prev =>
+      next
+        ? [...prev, { user_id: currentUserId, screen_name: null }]
+        : prev.filter(l => l.user_id !== currentUserId)
+    )
     startLike(async () => { await toggleLike(post.id) })
   }
 
@@ -302,27 +310,50 @@ function FeedCard({
       )}
 
       {/* Footer: likes + comments */}
-      <div className="flex items-center gap-4 px-4 py-2.5 border-t border-gray-100">
-        <button
-          onClick={handleLike}
-          disabled={liking}
-          className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${
-            liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
-          }`}
-        >
-          <span>{liked ? '❤️' : '🤍'}</span>
-          <span>{likeCount > 0 ? likeCount : ''}</span>
-        </button>
+      <div className="border-t border-gray-100">
+        <div className="flex items-center gap-4 px-4 py-2.5">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleLike}
+              disabled={liking}
+              className={`text-xs font-bold transition-colors ${
+                liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+              }`}
+            >
+              {liked ? '❤️' : '🤍'}
+            </button>
+            {likeCount > 0 && (
+              <button
+                onClick={() => setShowLikers(s => !s)}
+                className={`text-xs font-bold px-1 transition-colors ${
+                  showLikers ? 'text-red-400' : 'text-gray-400 hover:text-red-400'
+                }`}
+              >
+                {likeCount}
+              </button>
+            )}
+          </div>
 
-        <button
-          onClick={toggleComments}
-          className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${
-            showComments ? 'text-blue-500' : 'text-gray-400 hover:text-blue-400'
-          }`}
-        >
-          <span>💬</span>
-          <span>{comments.length > 0 ? comments.length : 'Comment'}</span>
-        </button>
+          <button
+            onClick={toggleComments}
+            className={`flex items-center gap-1.5 text-xs font-bold transition-colors ${
+              showComments ? 'text-blue-500' : 'text-gray-400 hover:text-blue-400'
+            }`}
+          >
+            <span>💬</span>
+            <span>{comments.length > 0 ? comments.length : 'Comment'}</span>
+          </button>
+        </div>
+
+        {showLikers && likedBy.length > 0 && (
+          <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+            {likedBy.map((l, i) => (
+              <span key={i} className="text-[11px] font-semibold bg-red-50 text-red-500 px-2 py-0.5 rounded-full">
+                {displayName(l.screen_name)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Comments section */}

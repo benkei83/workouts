@@ -61,6 +61,21 @@ async function FeedLoader() {
       .order('created_at', { ascending: false })
       .limit(60)
 
+    // Batch-fetch screen names for all likers in one query
+    const allLikerIds = [...new Set(
+      (rawPosts ?? []).flatMap(p =>
+        ((p.feed_likes as { user_id: string }[]) ?? []).map(l => l.user_id)
+      )
+    )]
+    const likerNames: Record<string, string | null> = {}
+    if (allLikerIds.length > 0) {
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('user_id, screen_name')
+        .in('user_id', allLikerIds)
+      for (const s of settings ?? []) likerNames[s.user_id] = s.screen_name
+    }
+
     posts = (rawPosts || []).map(p => {
       const likes    = (p.feed_likes    as { user_id: string }[]) || []
       const comments = (p.feed_comments as FeedComment[])         || []
@@ -76,6 +91,10 @@ async function FeedLoader() {
         created_at:       p.created_at,
         like_count:       likes.length,
         liked_by_me:      likes.some(l => l.user_id === user.id),
+        liked_by:         likes.map(l => ({
+          user_id:     l.user_id,
+          screen_name: likerNames[l.user_id] ?? null,
+        })),
         comments:         [...comments].sort((a, b) =>
           a.created_at.localeCompare(b.created_at)
         ),
