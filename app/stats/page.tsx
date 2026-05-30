@@ -59,14 +59,14 @@ function groupByWeek(dates: Date[]): { label: string; count: number }[] {
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now)
-    d.setDate(d.getDate() - d.getDay() - i * 7)
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7 - i * 7)
     d.setHours(0, 0, 0, 0)
     buckets.set(d.getTime(), 0)
   }
 
   for (const date of dates) {
     const d = new Date(date)
-    d.setDate(d.getDate() - d.getDay())
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7)
     d.setHours(0, 0, 0, 0)
     const key = d.getTime()
     if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1)
