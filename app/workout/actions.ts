@@ -978,12 +978,14 @@ export async function updateExerciseMeta(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('exercises')
     .update({ muscle_group, equipment })
     .eq('id', exerciseId)
+    .select('id')
 
-  if (error) return { error: 'Failed to update exercise' }
+  if (error) return { error: error.message }
+  if (!data?.length) return { error: 'rls' }
 
   revalidatePath('/exercises')
   return { success: true }
@@ -991,10 +993,19 @@ export async function updateExerciseMeta(
 
 export async function deleteExercise(exerciseId: string) {
   const supabase = await createClient()
-  
-  const { error } = await supabase.from('exercises').delete().eq('id', exerciseId)
-  if (error) return { error: 'Failed to delete exercise' }
-  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { data, error } = await supabase
+    .from('exercises')
+    .delete()
+    .eq('id', exerciseId)
+    .eq('user_id', user.id)
+    .select('id')
+
+  if (error) return { error: error.message }
+  if (!data?.length) return { error: 'rls' }
+
   revalidatePath('/exercises')
   return { success: true }
 }

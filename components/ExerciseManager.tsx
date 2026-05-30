@@ -131,22 +131,40 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
     })
   }
 
+  const [metaError, setMetaError] = useState<string | null>(null)
+
   const handleUpdateMeta = (formData: FormData) => {
     if (!editingExercise) return
     const mg = (formData.get('muscle_group') as string) || null
     const eq = (formData.get('equipment') as string) || null
+    setMetaError(null)
     startTransition(async () => {
-      await updateExerciseMeta(editingExercise.id, mg, eq)
+      const result = await updateExerciseMeta(editingExercise.id, mg, eq)
+      if ('error' in result) {
+        setMetaError(result.error === 'rls'
+          ? 'Save blocked — add an UPDATE policy for the exercises table in Supabase.'
+          : (result.error ?? 'Unknown error')
+        )
+        return
+      }
       setExercises(prev => prev.map(e => e.id === editingExercise.id ? { ...e, muscle_group: mg, equipment: eq } : e))
-      setEditingExercise(prev => prev ? { ...prev, muscle_group: mg, equipment: eq } : null)
+      setEditingExercise(null)
     })
   }
 
   const handleDelete = (id: string) => {
     if (!window.confirm('Delete this exercise? It will be removed from all past workouts.')) return
+    const removed = exercises.find(e => e.id === id)
+    setExercises(prev => prev.filter(e => e.id !== id))
     startTransition(async () => {
-      await deleteExercise(id)
-      setExercises(prev => prev.filter(e => e.id !== id))
+      const result = await deleteExercise(id)
+      if ('error' in result) {
+        if (removed) setExercises(prev => [...prev, removed])
+        alert(result.error === 'rls'
+          ? 'Delete blocked — add a DELETE policy for the exercises table in Supabase.'
+          : (result.error ?? 'Failed to delete exercise')
+        )
+      }
     })
   }
 
@@ -333,6 +351,9 @@ export default function ExerciseManager({ initialExercises }: { initialExercises
                     className="w-full bg-gray-800 text-white font-bold rounded-xl py-2.5 text-sm disabled:opacity-50 hover:bg-black transition-colors">
                     {isPending ? 'Saving…' : 'Save Tags'}
                   </button>
+                  {metaError && (
+                    <p className="text-xs text-red-500 font-semibold mt-2">{metaError}</p>
+                  )}
                 </form>
               </div>
               {/* Training settings */}
