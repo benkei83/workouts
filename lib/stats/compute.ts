@@ -87,6 +87,8 @@ export type WorkoutStats = {
   setsPerHour: number
   topExercises: ExerciseSessionSummary[]
   muscleGroupVolume: Record<string, number>
+  muscleGroupSets:   Record<string, number>
+  muscleGroupReps:   Record<string, number>
   totalKmRun: number
   bestOneRM: { exerciseId: string; name: string; oneRM: number } | null
 }
@@ -128,6 +130,8 @@ export function computeWorkoutStats(input: {
   let totalSets = 0
   let totalWeightSum = 0
   const muscleGroupVolume: Record<string, number> = {}
+  const muscleGroupSets:   Record<string, number> = {}
+  const muscleGroupReps:   Record<string, number> = {}
   const topExercises: ExerciseSessionSummary[] = []
   let bestOneRM: WorkoutStats['bestOneRM'] = null
 
@@ -143,7 +147,11 @@ export function computeWorkoutStats(input: {
     totalWeightSum += ex.sets.reduce((s, set) => s + set.weight, 0)
 
     if (ex.muscleGroup) {
-      muscleGroupVolume[ex.muscleGroup] = (muscleGroupVolume[ex.muscleGroup] || 0) + vol
+      const mg = ex.muscleGroup
+      const totalReps = ex.sets.reduce((s, set) => s + set.reps, 0)
+      muscleGroupVolume[mg] = (muscleGroupVolume[mg] || 0) + vol
+      muscleGroupSets[mg]   = (muscleGroupSets[mg]   || 0) + ex.sets.length
+      muscleGroupReps[mg]   = (muscleGroupReps[mg]   || 0) + totalReps
     }
 
     // Best 1RM across all sets in this workout
@@ -181,6 +189,8 @@ export function computeWorkoutStats(input: {
     setsPerHour,
     topExercises,
     muscleGroupVolume,
+    muscleGroupSets,
+    muscleGroupReps,
     totalKmRun: Math.round(totalKmRun * 10) / 10,
     bestOneRM,
   }

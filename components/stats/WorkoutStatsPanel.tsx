@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   computeWorkoutStats,
   computeSessionBestSets,
@@ -19,10 +19,17 @@ const MG_LABELS: Record<string, string> = {
   arms: 'Arms', legs: 'Legs', core: 'Core', calves: 'Calves',
 }
 
-const MG_COLORS: Record<string, string> = {
-  chest: 'bg-red-400', back: 'bg-blue-400', shoulders: 'bg-purple-400',
-  arms: 'bg-orange-400', legs: 'bg-green-400', core: 'bg-yellow-400', calves: 'bg-teal-400',
+const MG_HEX: Record<string, string> = {
+  chest:     '#3b82f6',
+  back:      '#22c55e',
+  shoulders: '#a855f7',
+  arms:      '#fb923c',
+  legs:      '#ef4444',
+  core:      '#fbbf24',
+  calves:    '#9ca3af',
 }
+
+type MgMetric = 'volume' | 'sets' | 'reps'
 
 function fmt(kg: number): string {
   return kg >= 1000 ? `${(kg / 1000).toFixed(1)}t` : `${kg}kg`
@@ -78,9 +85,10 @@ export default function WorkoutStatsPanel({
     })
   }, [sessionBestSets, historicalBests])
 
+  const [mgMetric, setMgMetric] = useState<MgMetric>('sets')
+
   const hasStrength = stats.totalSets > 0
   const hasMuscle   = Object.keys(stats.muscleGroupVolume).length > 0
-  const maxMgVol    = Math.max(1, ...Object.values(stats.muscleGroupVolume))
 
   if (!hasStrength && stats.totalKmRun === 0) return null
 
@@ -161,28 +169,54 @@ export default function WorkoutStatsPanel({
       {/* ── Muscle group breakdown ── */}
       {hasMuscle && (
         <div className="bg-white border border-gray-100 rounded-xl p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
-            Volume by Muscle
-          </p>
-          <div className="space-y-2.5">
-            {Object.entries(stats.muscleGroupVolume)
-              .sort(([, a], [, b]) => b - a)
-              .map(([mg, vol]) => (
-                <div key={mg}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-semibold text-gray-600">
-                      {MG_LABELS[mg] ?? mg}
-                    </span>
-                    <span className="text-xs font-bold text-gray-800">{fmt(Math.round(vol))}</span>
-                  </div>
-                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${MG_COLORS[mg] ?? 'bg-gray-400'}`}
-                      style={{ width: `${Math.round((vol / maxMgVol) * 100)}%` }}
-                    />
-                  </div>
-                </div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              Muscle Split
+            </p>
+            <div className="flex gap-1">
+              {(['sets', 'reps', 'volume'] as MgMetric[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMgMetric(m)}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-colors ${
+                    mgMetric === m ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-700'
+                  }`}
+                >
+                  {m}
+                </button>
               ))}
+            </div>
+          </div>
+          <div className="space-y-2.5">
+            {(() => {
+              const data = mgMetric === 'sets'   ? stats.muscleGroupSets
+                         : mgMetric === 'reps'   ? stats.muscleGroupReps
+                         : stats.muscleGroupVolume
+              const maxVal = Math.max(1, ...Object.values(data))
+              return Object.entries(data)
+                .sort(([, a], [, b]) => b - a)
+                .map(([mg, val]) => (
+                  <div key={mg}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs font-semibold text-gray-600">
+                        {MG_LABELS[mg] ?? mg}
+                      </span>
+                      <span className="text-xs font-bold text-gray-800">
+                        {mgMetric === 'volume' ? fmt(Math.round(val)) : `${val} ${mgMetric}`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.round((val / maxVal) * 100)}%`,
+                          backgroundColor: MG_HEX[mg] ?? '#9ca3af',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))
+            })()}
           </div>
         </div>
       )}

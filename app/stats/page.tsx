@@ -104,7 +104,7 @@ async function StatsLoader() {
       id, created_at, total_duration_mins,
       strength_logs(
         id,
-        strength_sets( exercise_id, actual_weight, actual_reps, rpe, exercises(id, name) )
+        strength_sets( exercise_id, actual_weight, actual_reps, rpe, exercises(id, name, muscle_group) )
       ),
       running_logs( id, distance_km, duration_seconds, average_speed, session_type, environment )
     `)
@@ -203,6 +203,21 @@ async function StatsLoader() {
       targetReps: settingsMap[e.id] ?? null,
     }))
 
+  // ── muscle split ─────────────────────────────────────────
+  const muscleSplit: Record<string, { sets: number; reps: number; volume: number }> = {}
+  for (const w of workouts) {
+    for (const log of (w.strength_logs ?? [])) {
+      for (const set of (log.strength_sets ?? [])) {
+        const muscle = (set.exercises as any)?.muscle_group
+        if (!muscle) continue
+        if (!muscleSplit[muscle]) muscleSplit[muscle] = { sets: 0, reps: 0, volume: 0 }
+        muscleSplit[muscle].sets   += 1
+        muscleSplit[muscle].reps   += Number(set.actual_reps)   || 0
+        muscleSplit[muscle].volume += (Number(set.actual_weight) || 0) * (Number(set.actual_reps) || 0)
+      }
+    }
+  }
+
   // ── cardio ───────────────────────────────────────────────
   const allRuns = workouts.flatMap(w =>
     (w.running_logs ?? []).map(r => ({ ...r, date: w.created_at }))
@@ -229,6 +244,9 @@ async function StatsLoader() {
       avgSpeed={Math.round(avgSpeed * 10) / 10}
       recentRuns={recentRuns}
       cardioSessionCount={allRuns.length}
+      muscleSplitSets={Object.fromEntries(Object.entries(muscleSplit).map(([k, v]) => [k, v.sets]))}
+      muscleSplitReps={Object.fromEntries(Object.entries(muscleSplit).map(([k, v]) => [k, v.reps]))}
+      muscleSplitVol={Object.fromEntries(Object.entries(muscleSplit).map(([k, v]) => [k, v.volume]))}
     />
   )
 }

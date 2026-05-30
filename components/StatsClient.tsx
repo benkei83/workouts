@@ -30,6 +30,9 @@ type Props = {
   avgSpeed: number
   recentRuns: { date: string; km: number; speed: number; type: string }[]
   cardioSessionCount: number
+  muscleSplitSets?: Record<string, number>
+  muscleSplitReps?: Record<string, number>
+  muscleSplitVol?:  Record<string, number>
 }
 
 // ── Shared tooltip ────────────────────────────────────────────────────────────
@@ -236,6 +239,65 @@ function ExerciseModal({ ex, onClose }: { ex: ExerciseStat; onClose: () => void 
   )
 }
 
+// ── Muscle split ─────────────────────────────────────────────────────────────
+
+type SplitMetric = 'sets' | 'reps' | 'volume'
+
+const MUSCLE_HEX: Record<string, string> = {
+  chest:     '#3b82f6',
+  back:      '#22c55e',
+  shoulders: '#a855f7',
+  arms:      '#fb923c',
+  legs:      '#ef4444',
+  core:      '#fbbf24',
+  calves:    '#9ca3af',
+}
+
+function formatVolume(v: number) {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M kg`
+  if (v >= 1_000)     return `${Math.round(v / 1_000)}k kg`
+  return `${Math.round(v)} kg`
+}
+
+function MuscleSplitChart({
+  data,
+  metric,
+}: {
+  data: Record<string, number>
+  metric: SplitMetric
+}) {
+  const entries = Object.entries(data)
+    .map(([muscle, value]) => ({ muscle, value }))
+    .sort((a, b) => b.value - a.value)
+  const total = entries.reduce((s, e) => s + e.value, 0)
+  if (total === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {entries.map(({ muscle, value }) => {
+        const pct = Math.round((value / total) * 100)
+        const label = metric === 'volume'
+          ? `${formatVolume(value)} · ${pct}%`
+          : `${value.toLocaleString()} ${metric} · ${pct}%`
+        return (
+          <div key={muscle}>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-xs font-bold text-gray-700 capitalize">{muscle}</span>
+              <span className="text-xs text-gray-400 tabular-nums">{label}</span>
+            </div>
+            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${pct}%`, backgroundColor: MUSCLE_HEX[muscle] ?? '#9ca3af' }}
+              />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Trend badge ───────────────────────────────────────────────────────────────
 
 function TrendBadge({ trend }: { trend: 'up' | 'flat' | 'down' }) {
@@ -256,8 +318,18 @@ export default function StatsClient({
   avgSpeed,
   recentRuns,
   cardioSessionCount,
+  muscleSplitSets,
+  muscleSplitReps,
+  muscleSplitVol,
 }: Props) {
   const [selectedExercise, setSelectedExercise] = useState<ExerciseStat | null>(null)
+  const [splitMetric, setSplitMetric] = useState<SplitMetric>('sets')
+
+  // Safe fallbacks guard against any hot-reload version mismatch
+  const safeSets = muscleSplitSets ?? {}
+  const safeReps = muscleSplitReps ?? {}
+  const safeVol  = muscleSplitVol  ?? {}
+  const activeSplitData = splitMetric === 'sets' ? safeSets : splitMetric === 'reps' ? safeReps : safeVol
 
   if (totalWorkouts === 0) {
     return (
@@ -305,6 +377,33 @@ export default function StatsClient({
           <span className="text-[9px] text-black font-bold">This week</span>
         </div>
       </div>
+
+      {/* ── Muscle split ── */}
+      {Object.keys(safeSets).length > 0 && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+              Muscle split — all time
+            </h2>
+            <div className="flex gap-1">
+              {(['sets', 'reps', 'volume'] as SplitMetric[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setSplitMetric(m)}
+                  className={`text-[11px] font-bold px-2 py-1 rounded-lg transition-colors ${
+                    splitMetric === m
+                      ? 'bg-gray-900 text-white'
+                      : 'text-gray-400 hover:text-gray-700'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+          <MuscleSplitChart data={activeSplitData} metric={splitMetric} />
+        </div>
+      )}
 
       {/* ── Strength ── */}
       {exercises.length > 0 && (
