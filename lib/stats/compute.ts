@@ -377,6 +377,47 @@ export function computeExerciseFrequency(
   }
 }
 
+// ── Progression history (derived from session weights) ───────────────────────
+
+export type ProgressionHistory = {
+  totalProgressions: number   // sessions where max weight was higher than previous
+  totalDeloads:      number   // sessions where max weight was lower than previous
+  increaseStreak:    number   // current run of consecutive weight increases
+}
+
+/**
+ * Walk the per-session history and count weight increases, decreases and the
+ * current consecutive-increase streak. Uses actual logged max weights, not
+ * settings rows, so it works regardless of RLS policies.
+ */
+export function computeProgressionHistory(
+  history: ExerciseHistorySession[],
+): ProgressionHistory {
+  if (history.length < 2) {
+    return { totalProgressions: 0, totalDeloads: 0, increaseStreak: 0 }
+  }
+
+  // history is already sorted oldest → newest
+  const weights = history.map(h => h.maxWeight)
+
+  let totalProgressions = 0
+  let totalDeloads      = 0
+
+  for (let i = 1; i < weights.length; i++) {
+    if (weights[i] > weights[i - 1])      totalProgressions++
+    else if (weights[i] < weights[i - 1]) totalDeloads++
+  }
+
+  // Current streak: walk backwards until a non-increase
+  let increaseStreak = 0
+  for (let i = weights.length - 1; i > 0; i--) {
+    if (weights[i] > weights[i - 1]) increaseStreak++
+    else break
+  }
+
+  return { totalProgressions, totalDeloads, increaseStreak }
+}
+
 // ── Session Best Sets (WorkoutStatsPanel — Section A) ─────────────────────────
 
 export type SessionBestSet = {

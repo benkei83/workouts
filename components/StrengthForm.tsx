@@ -364,6 +364,40 @@ export default function StrengthForm({
           )
         })()}
 
+        {/* Progression state — shown when exercise has auto-progression */}
+        {uiMode === 'select' && activeExerciseData?.settings?.protocol && activeExerciseData.settings.protocol !== 'manual' && (() => {
+          const s = activeExerciseData.settings!
+          const successes   = Number(s.current_successes) || 0
+          const minSucc     = Number(s.min_successes)     || 1
+          const failures    = Number(s.current_failures)  || 0
+          const maxFail     = Number(s.max_failures)       || 3
+          const progRate    = Number(s.progression_rate)  || 2.5
+          const nextWeight  = (Number(s.current_weight) || 0) + progRate
+          const deloadWeight = Math.max(0, (Number(s.current_weight) || 0) - progRate * (Number(s.deload_multiplier) || 2))
+
+          if (failures > 0) {
+            return (
+              <div className="flex items-center gap-2 px-4 py-2 mb-2 rounded-xl bg-red-50 border border-red-100">
+                <span className="text-red-400 text-sm">⚠</span>
+                <p className="text-xs font-semibold text-red-600">
+                  {failures}/{maxFail} failures — deload to {deloadWeight}kg if missed again
+                </p>
+              </div>
+            )
+          }
+          if (successes > 0) {
+            return (
+              <div className="flex items-center gap-2 px-4 py-2 mb-2 rounded-xl bg-green-50 border border-green-100">
+                <span className="text-green-500 text-sm">↑</span>
+                <p className="text-xs font-semibold text-green-700">
+                  {successes}/{minSucc} sessions toward +{progRate}kg → {nextWeight}kg
+                </p>
+              </div>
+            )
+          }
+          return null
+        })()}
+
         {/* Last session reference */}
         {uiMode === 'select' && !editData && activeExerciseData?.lastSession && (
           <div className="mt-2 px-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">

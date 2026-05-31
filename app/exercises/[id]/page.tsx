@@ -6,8 +6,9 @@ import Link from 'next/link'
 import CollapsibleSection from '@/components/CollapsibleSection'
 import ExerciseSettingsCard from '@/components/exercises/ExerciseSettingsCard'
 import ExerciseStatsPanel from '@/components/stats/ExerciseStatsPanel'
-import { fetchExercisePageData } from '@/app/exercises/actions'
-import { computeRepMaxes, computeExerciseFrequency } from '@/lib/stats/compute'
+import ProgressionCard from '@/components/exercises/ProgressionCard'
+import { fetchExercisePageData, fetchProgressionCounts } from '@/app/exercises/actions'
+import { computeRepMaxes, computeExerciseFrequency, computeProgressionHistory } from '@/lib/stats/compute'
 import { MUSCLE_GROUPS, EQUIPMENT_LABELS } from '@/lib/muscleGroups'
 
 const MG_LABELS: Record<string, string> = Object.fromEntries(MUSCLE_GROUPS.map(g => [g.id, g.label]))
@@ -64,9 +65,24 @@ async function ExerciseDetailLoader({ params }: { params: Promise<{ id: string }
     .eq('is_active', true)
     .maybeSingle()
 
-  const { history, cleanSets } = await fetchExercisePageData(id)
+  const isAutoProgression = !!(setting?.protocol && setting.protocol !== 'manual')
+
+  const [{ history, cleanSets }, engineCounts] = await Promise.all([
+    fetchExercisePageData(id),
+    isAutoProgression ? fetchProgressionCounts(id) : Promise.resolve(null),
+  ])
+
   const repMaxes  = computeRepMaxes(cleanSets)
   const frequency = computeExerciseFrequency(history)
+
+  // Streak from session data (fine — only increases matter, not deloads)
+  // Progression/deload counts from engine history (accurate, not affected by skip-progression)
+  const sessionProgression = isAutoProgression ? computeProgressionHistory(history) : null
+  const progressionHistory = isAutoProgression && (engineCounts || sessionProgression) ? {
+    totalProgressions: engineCounts?.totalProgressions ?? sessionProgression?.totalProgressions ?? 0,
+    totalDeloads:      engineCounts?.totalDeloads      ?? 0,
+    increaseStreak:    sessionProgression?.increaseStreak ?? 0,
+  } : null
 
   const tagLine = [
     MG_LABELS[exercise.muscle_group] ?? exercise.muscle_group,
@@ -98,6 +114,11 @@ async function ExerciseDetailLoader({ params }: { params: Promise<{ id: string }
 
         {/* ── Stats ── */}
         <CollapsibleSection title="Stats" defaultOpen={true}>
+          {setting?.protocol && setting.protocol !== 'manual' && (
+            <div className="pt-4">
+              <ProgressionCard setting={setting} history={progressionHistory} />
+            </div>
+          )}
           {history.length === 0 ? (
             <div className="text-center py-10 text-gray-400">
               <p className="text-3xl mb-2">📊</p>

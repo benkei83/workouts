@@ -224,3 +224,42 @@ export async function fetchExercisePageData(exerciseId: string): Promise<{
   history.sort((a, b) => new Date(a.workoutDate).getTime() - new Date(b.workoutDate).getTime())
   return { history, cleanSets }
 }
+
+/**
+ * Walk the full SCD settings history to count engine-driven weight changes:
+ * progressions = weight increased by the engine
+ * deloads      = weight decreased by the engine
+ *
+ * Requires the Supabase SELECT policy on user_exercise_settings to NOT
+ * filter by is_active — it must be: USING (user_id = auth.uid())
+ */
+export async function fetchProgressionCounts(
+  exerciseId: string
+): Promise<{ totalProgressions: number; totalDeloads: number } | null> {
+  noStore()
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: rows } = await supabase
+    .from('user_exercise_settings')
+    .select('current_weight')
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .order('created_at', { ascending: true })
+
+  // Return null when we can only see 1 row — most likely the RLS policy is
+  // still filtering by is_active. The caller falls back to session-based data.
+  if (!rows || rows.length < 2) return null
+
+  const weights = rows.map(r => Number(r.current_weight) || 0)
+  let totalProgressions = 0
+  let totalDeloads      = 0
+
+  for (let i = 1; i < weights.length; i++) {
+    if (weights[i] > weights[i - 1])      totalProgressions++
+    else if (weights[i] < weights[i - 1]) totalDeloads++
+  }
+
+  return { totalProgressions, totalDeloads }
+}

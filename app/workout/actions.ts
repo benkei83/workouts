@@ -334,11 +334,14 @@ export async function saveStrengthExercise(
       const prevWeight = Number(setting.current_weight) || 0
       const prevFailures = Number(setting.current_failures) || 0
 
+      // Mark ALL active rows for this exercise inactive (guards against duplicates)
       await supabase.from('user_exercise_settings')
         .update({ is_active: false, valid_to: new Date().toISOString() })
-        .eq('id', setting.id)
+        .eq('user_id', user.id)
+        .eq('exercise_id', exerciseId)
+        .eq('is_active', true)
 
-      await supabase.from('user_exercise_settings').insert({
+      const { error: insertError } = await supabase.from('user_exercise_settings').insert({
         user_id: setting.user_id,
         exercise_id: setting.exercise_id,
         current_weight: newWeight,
@@ -353,8 +356,13 @@ export async function saveStrengthExercise(
         min_successes: setting.min_successes ?? 1,
         current_successes: newSuccesses,
         deload_multiplier: setting.deload_multiplier,
+        suppress_prs: (setting as any).suppress_prs ?? false,
+        pr_min_weight: (setting as any).pr_min_weight ?? null,
         is_active: true
       })
+      if (insertError) {
+        console.error('[progression engine] failed to insert new settings row:', insertError.message)
+      }
 
       // Emit trophy events
       if (newWeight > prevWeight) {
