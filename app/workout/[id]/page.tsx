@@ -15,10 +15,12 @@ import ShareWorkoutButton from '@/components/ShareWorkoutButton'
 // ==========================================
 // THE PAGE SHELL
 // ==========================================
-export default function ActiveWorkoutPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
+export default function ActiveWorkoutPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ focus?: string }>
 }) {
   return (
     <main className="max-w-md mx-auto min-h-screen bg-gray-50 pb-12 relative">
@@ -29,7 +31,7 @@ export default function ActiveWorkoutPage({
           <p className="text-gray-400 font-medium mt-4">Loading your canvas...</p>
         </div>
       }>
-        <WorkoutDataLoader params={params} />
+        <WorkoutDataLoader params={params} searchParams={searchParams} />
       </Suspense>
     </main>
   )
@@ -38,8 +40,15 @@ export default function ActiveWorkoutPage({
 // ==========================================
 // THE SECURE DATA LOADER
 // ==========================================
-async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+async function WorkoutDataLoader({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ focus?: string }>
+}) {
+  const [{ id }, sp] = await Promise.all([params, searchParams])
+  const focusExerciseId = sp?.focus ?? null
   
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -217,6 +226,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
         vibrate_on_rest_complete: settingsRow.vibrate_on_rest_complete ?? DEFAULT_USER_SETTINGS.vibrate_on_rest_complete,
         sound_on_rest_complete:   settingsRow.sound_on_rest_complete   ?? DEFAULT_USER_SETTINGS.sound_on_rest_complete,
         height_cm:                null,
+        focus_exercise_id:        null,
         auto_share_workouts:      DEFAULT_USER_SETTINGS.auto_share_workouts,
       }
     }
@@ -281,6 +291,7 @@ async function WorkoutDataLoader({ params }: { params: Promise<{ id: string }> }
           exerciseSettingsMap={exerciseSettingsMap}
           historicalBests={historicalBests}
           userSettings={profileSettings}
+          focusExerciseId={focusExerciseId}
         />
       </div>
     </>

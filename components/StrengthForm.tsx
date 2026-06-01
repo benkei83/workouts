@@ -57,6 +57,7 @@ export default function StrengthForm({
   initialWeight = 60,
   editData,
   userSettings = DEFAULT_USER_SETTINGS,
+  initialExerciseId,
 }: {
   workoutId: string,
   exercises: Exercise[],
@@ -68,6 +69,8 @@ export default function StrengthForm({
   initialWeight?: number,
   editData?: any,
   userSettings?: UserSettings,
+  /** When set (focus mode), pre-selects this exercise. */
+  initialExerciseId?: string,
 }) {
   // Local augmentable copy of exercises — so wger-added ones appear immediately
   const [exerciseList, setExerciseList] = useState(exercises)
@@ -79,6 +82,10 @@ export default function StrengthForm({
 
   const [selectedExercise, setSelectedExercise] = useState(() => {
     if (editData?.exerciseId) return editData.exerciseId
+    // Focus mode: always start with the specified exercise
+    if (initialExerciseId && exercises.find(e => e.id === initialExerciseId)) {
+      return initialExerciseId
+    }
     if (draft?.selectedExercise && exercises.find(e => e.id === draft.selectedExercise)) {
       return draft.selectedExercise
     }

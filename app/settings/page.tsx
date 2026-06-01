@@ -30,7 +30,7 @@ async function SettingsContent() {
   try {
     const { data } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, auto_share_workouts, height_cm')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, auto_share_workouts, height_cm, focus_exercise_id')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -51,6 +51,7 @@ async function SettingsContent() {
         sound_on_rest_complete:   data.sound_on_rest_complete   ?? DEFAULT_USER_SETTINGS.sound_on_rest_complete,
         auto_share_workouts:      data.auto_share_workouts      ?? DEFAULT_USER_SETTINGS.auto_share_workouts,
         height_cm:                data.height_cm != null ? Number(data.height_cm) : null,
+        focus_exercise_id:        data.focus_exercise_id ?? null,
       }
     }
     if (!data && defaultName) {
@@ -60,6 +61,13 @@ async function SettingsContent() {
       settings.screen_name = defaultName
     }
   } catch { /* table not migrated yet — use defaults */ }
+
+  const { data: exercises } = await supabase
+    .from('exercises')
+    .select('id, name')
+    .eq('user_id', user.id)
+    .eq('category', 'strength')
+    .order('name')
 
   return (
     <>
@@ -77,7 +85,7 @@ async function SettingsContent() {
       </header>
 
       <div className="px-4 pt-6">
-        <SettingsForm settings={settings} />
+        <SettingsForm settings={settings} exercises={exercises ?? []} />
       </div>
     </>
   )

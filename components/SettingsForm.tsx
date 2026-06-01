@@ -60,7 +60,13 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 // ── Main form ──────────────────────────────────────────────────────────────────
-export default function SettingsForm({ settings }: { settings: UserSettings }) {
+export default function SettingsForm({
+  settings,
+  exercises = [],
+}: {
+  settings: UserSettings
+  exercises?: { id: string; name: string }[]
+}) {
   // ── Profile ────────────────────────────────────────────────────────────────
   const [screenName, setScreenName] = useState(settings.screen_name ?? '')
   const [nameSaved, setNameSaved] = useState(false)
@@ -88,6 +94,12 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
   // ── Notifications ──────────────────────────────────────────────────────────
   const [trophyToast, setTrophyToast] = useState(settings.show_trophy_toasts)
   const [toastSaved, setToastSaved]   = useState(false)
+
+  // ── Focus mode ─────────────────────────────────────────────────────────────
+  const [focusOn,        setFocusOn]        = useState(!!settings.focus_exercise_id)
+  const [focusExId,      setFocusExId]      = useState(settings.focus_exercise_id ?? '')
+  const [focusSaved,     setFocusSaved]     = useState(false)
+  const [focusPending,   startFocusTransition] = useTransition()
 
   // Detect vibration support client-side (not available in iOS Safari)
   useEffect(() => {
@@ -151,6 +163,31 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
     setTrophyToast(next)
     await updateUserSettings({ show_trophy_toasts: next })
     flash(setToastSaved)
+  }
+
+  const handleFocusToggle = () => {
+    const next = !focusOn
+    setFocusOn(next)
+    startFocusTransition(async () => {
+      if (!next) {
+        // Turning off — clear the exercise
+        await updateUserSettings({ focus_exercise_id: null })
+        setFocusExId('')
+      } else if (focusExId) {
+        // Turning on with an already-selected exercise
+        await updateUserSettings({ focus_exercise_id: focusExId })
+      }
+      flash(setFocusSaved)
+    })
+  }
+
+  const handleFocusExercise = (id: string) => {
+    setFocusExId(id)
+    if (!id) return
+    startFocusTransition(async () => {
+      await updateUserSettings({ focus_exercise_id: id })
+      flash(setFocusSaved)
+    })
   }
 
   return (
@@ -334,6 +371,54 @@ export default function SettingsForm({ settings }: { settings: UserSettings }) {
           </div>
         </Row>
       </Section>
+
+      {/* ── FOCUS MODE ── */}
+      {exercises.length > 0 && (
+        <Section title="Focus Mode">
+          <Row>
+            <div className="flex items-center justify-between">
+              <div className="flex-1 pr-4">
+                <p className="text-sm font-semibold text-gray-700">Focus Mode</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Replaces the home screen with a single-exercise dashboard.
+                  Everything else stays accessible via the menu.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <SavedBadge show={focusSaved} />
+                <Toggle
+                  on={focusOn}
+                  onChange={handleFocusToggle}
+                />
+              </div>
+            </div>
+
+            {focusOn && (
+              <div className="mt-4">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                  Exercise
+                </label>
+                <select
+                  value={focusExId}
+                  onChange={e => handleFocusExercise(e.target.value)}
+                  disabled={focusPending}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-semibold text-gray-700 focus:ring-2 focus:ring-black outline-none disabled:opacity-50"
+                >
+                  <option value="">— select an exercise —</option>
+                  {exercises.map(ex => (
+                    <option key={ex.id} value={ex.id}>{ex.name}</option>
+                  ))}
+                </select>
+                {focusExId && (
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    To turn off, toggle Focus Mode above.
+                  </p>
+                )}
+              </div>
+            )}
+          </Row>
+        </Section>
+      )}
 
     </div>
   )

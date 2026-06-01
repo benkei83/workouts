@@ -6,6 +6,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import { computeWorkoutOutcomes, computeWorkoutStreak } from '@/lib/workoutOutcomes'
 import type { Outcome } from '@/lib/workoutOutcomes'
+import FocusDashboard from '@/components/FocusDashboard'
 
 function timeAgo(iso: string): string {
   const diff  = Date.now() - new Date(iso).getTime()
@@ -97,6 +98,24 @@ export default function HomePage() {
 async function Dashboard() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // Focus mode — show a single-exercise dashboard instead of the full home
+  if (user) {
+    const { data: focusSettings } = await supabase
+      .from('user_settings')
+      .select('focus_exercise_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (focusSettings?.focus_exercise_id) {
+      return (
+        <FocusDashboard
+          userId={user.id}
+          exerciseId={focusSettings.focus_exercise_id}
+        />
+      )
+    }
+  }
 
   return (
     <>

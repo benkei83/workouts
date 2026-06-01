@@ -7,6 +7,7 @@ const _activeModuleStore: Record<string, 'strength' | 'cardio' | 'superset'> = {
 const SS_MODULE_KEY = (id: string) => `wkt-${id}-module`
 
 import { useState, useTransition, useEffect, useLayoutEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 // useLayoutEffect runs synchronously after DOM commit (before paint), so the stores
 // are always written before the user can interact again. Falls back to useEffect on
@@ -16,7 +17,7 @@ import CardioForm from '@/components/CardioForm'
 import StrengthForm from '@/components/StrengthForm'
 import SupersetForm from '@/components/SupersetForm'
 import ProgramGuide from '@/components/ProgramGuide'
-import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram, saveStrengthExercise, saveSupersetLog } from '../actions'
+import { deleteRunningLog, deleteStrengthLog, deleteSupersetGroup, createProgram, saveStrengthExercise, saveSupersetLog, finishWorkoutWithFeel } from '../actions'
 import { enqueuePendingOp, dequeuePendingOp, getPendingOps, clearPendingOpsForWorkout, type PendingOp } from '@/lib/pendingQueue'
 import DeloadBadge from '@/components/DeloadBadge'
 import SuccessBadge from '@/components/SuccessBadge'
@@ -80,6 +81,7 @@ export function InteractiveCanvas({
   exerciseSettingsMap = {},
   historicalBests = {},
   userSettings = DEFAULT_USER_SETTINGS,
+  focusExerciseId = null,
 }: {
   workoutId: string
   initialRunningLogs: any[]
@@ -96,9 +98,12 @@ export function InteractiveCanvas({
   exerciseSettingsMap?: Record<string, { target_reps?: number | null } | null>
   historicalBests?: Record<string, { best1rm: number; bestVolume: number }>
   userSettings?: UserSettings
+  focusExerciseId?: string | null
 }) {
   const [activeModule, setActiveModule] = useState<'none' | 'cardio' | 'strength' | 'superset' | 'program_select' | 'program_guide'>(() => {
     if (isFinished) return 'none'
+    // Focus mode: always open strength form directly
+    if (focusExerciseId) return 'strength'
     // 1. In-memory (fastest — same JS session)
     const mem = _activeModuleStore[workoutId]
     if (mem) return mem
@@ -115,6 +120,7 @@ export function InteractiveCanvas({
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [isPending, startTransition] = useTransition()
   const [isCreatingProgram, setIsCreatingProgram] = useState(false)
+  const router = useRouter()
 
   // ── Optimistic / offline state ────────────────────────────
   const [pendingCards, setPendingCards] = useState<PendingCard[]>([])
@@ -184,6 +190,14 @@ export function InteractiveCanvas({
     } else {
       dequeuePendingOp(pendingId)
       // pending card removed by the useEffect above when new log arrives
+
+      // Focus mode: auto-finish the workout after saving the exercise
+      if (focusExerciseId) {
+        await new Promise(r => setTimeout(r, 800)) // brief pause so the user sees their sets logged
+        await finishWorkoutWithFeel(workoutId, null, null)
+        window.dispatchEvent(new CustomEvent(`workout-finished:${workoutId}`))
+        router.push('/')
+      }
     }
   }
 
@@ -693,7 +707,14 @@ export function InteractiveCanvas({
       )}
 
       {activeModule === 'strength' && !editData && (
-        <StrengthForm workoutId={workoutId} exercises={exercises} onCancel={closeForm} onSave={handleSaveStrength} userSettings={userSettings} />
+        <StrengthForm
+          workoutId={workoutId}
+          exercises={exercises}
+          onCancel={closeForm}
+          onSave={handleSaveStrength}
+          userSettings={userSettings}
+          initialExerciseId={focusExerciseId ?? undefined}
+        />
       )}
 
       {activeModule === 'superset' && !editSupersetData && (

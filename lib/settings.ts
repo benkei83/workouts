@@ -10,6 +10,11 @@ export type UserSettings = {
   auto_share_workouts: boolean
   /** Height in centimetres — used for BMI and Wilks score on the weight tracker */
   height_cm: number | null
+  /**
+   * When set, the home screen shows a focused single-exercise dashboard instead
+   * of the full interface. Clear to restore normal access. UUID of the exercise.
+   */
+  focus_exercise_id: string | null
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -20,4 +25,5 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   sound_on_rest_complete: true,
   auto_share_workouts: true,
   height_cm: null,
+  focus_exercise_id: null,
 }

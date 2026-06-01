@@ -19,5 +19,6 @@ export async function updateUserSettings(patch: Partial<UserSettings>) {
   if (error) return { error: error.message }
 
   revalidatePath('/settings')
+  revalidatePath('/')  // home page reacts to focus_exercise_id changes immediately
   return { ok: true }
 }

@@ -26,13 +26,25 @@ export default function AppNav() {
   const router = useRouter()
   const pathname = usePathname()
 
+  const [focusMode, setFocusMode] = useState(false)
+
   // Auth
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    supabase.auth.getUser().then(async ({ data }) => {
+      setUser(data.user)
+      if (data.user) {
+        const { data: settings } = await supabase
+          .from('user_settings')
+          .select('focus_exercise_id')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+        setFocusMode(!!settings?.focus_exercise_id)
+      }
+    })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       setUser(session?.user ?? null)
-      if (!session?.user) setActiveWorkoutId(null)
+      if (!session?.user) { setActiveWorkoutId(null); setFocusMode(false) }
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -74,6 +86,12 @@ export default function AppNav() {
 
   const isAdmin = user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL
   const moreItems = isAdmin ? [...MORE, { href: '/admin', label: 'Admin' }] : MORE
+
+  // In focus mode the tab bar collapses — only Home and Stats stay visible.
+  // Everything else is reachable via More if needed.
+  const primaryTabs = focusMode
+    ? PRIMARY.filter(t => t.href === '/stats')
+    : PRIMARY
 
   // Show the workout button when there's an active workout and we're not already on that screen
   const showWorkout = !!activeWorkoutId && !pathname.startsWith('/workout/')
@@ -144,7 +162,7 @@ export default function AppNav() {
             </Link>
           )}
 
-          {PRIMARY.map(item => (
+          {primaryTabs.map(item => (
             <Link
               key={item.href}
               href={item.href}
