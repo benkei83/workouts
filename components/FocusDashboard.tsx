@@ -162,12 +162,14 @@ export default async function FocusDashboard({
                   {currentWeight}<span className="text-sm font-normal text-gray-400 ml-1">kg</span>
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Next</p>
-                <p className="text-2xl font-extrabold text-green-600 mt-0.5">
-                  {nextWeight}<span className="text-sm font-normal text-gray-400 ml-1">kg</span>
-                </p>
-              </div>
+              {protocol !== 'manual' && (
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Next</p>
+                  <p className="text-2xl font-extrabold text-green-600 mt-0.5">
+                    {nextWeight}<span className="text-sm font-normal text-gray-400 ml-1">kg</span>
+                  </p>
+                </div>
+              )}
             </div>
             <div className="mt-3 pt-3 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-500">
