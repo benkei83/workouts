@@ -189,7 +189,9 @@ async function StatsLoader({ range }: { range: Range }) {
         id,
         strength_sets( exercise_id, actual_weight, actual_reps, rpe, exercises(id, name, muscle_group) )
       ),
-      running_logs( id, distance_km, duration_seconds, average_speed, session_type, environment )
+      running_logs( id, distance_km, duration_seconds, average_speed, session_type, environment,
+        running_legs( leg_type, duration_mins, speed_kmh, incline_percent )
+      )
     `)
     .eq('user_id', user.id)
     .not('total_duration_mins', 'is', null)
@@ -308,6 +310,72 @@ async function StatsLoader({ range }: { range: Range }) {
     type: `${r.environment ?? ''} ${r.session_type ?? ''}`.trim(),
   }))
 
+  // ── cardio best records ───────────────────────────────────
+  type BestRun = { label: string; value: string; sub?: string }
+  const bestRuns: BestRun[] = []
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const fmtDuration = (secs: number) => {
+    const h = Math.floor(secs / 3600)
+    const m = Math.floor((secs % 3600) / 60)
+    return h > 0 ? `${h}h ${m}m` : `${m} min`
+  }
+
+  const runsWithData = allRuns.filter(r => (r.distance_km ?? 0) > 0)
+
+  // Best distance
+  const byDist = [...runsWithData].sort((a, b) => (b.distance_km ?? 0) - (a.distance_km ?? 0))
+  if (byDist[0]) {
+    const r = byDist[0]
+    bestRuns.push({
+      label: 'Best Distance',
+      value: `${r.distance_km} km`,
+      sub: r.average_speed ? `${r.average_speed} km/h · ${fmtDate(r.date)}` : fmtDate(r.date),
+    })
+  }
+
+  // Longest session by duration
+  const byDur = [...allRuns].filter(r => (r.duration_seconds ?? 0) > 0)
+    .sort((a, b) => (b.duration_seconds ?? 0) - (a.duration_seconds ?? 0))
+  if (byDur[0]) {
+    const r = byDur[0]
+    bestRuns.push({
+      label: 'Longest Session',
+      value: fmtDuration(r.duration_seconds ?? 0),
+      sub: `${r.distance_km ?? 0} km · ${fmtDate(r.date)}`,
+    })
+  }
+
+  // Best average speed (runs > 1 km to filter out short tests)
+  const bySpeed = [...runsWithData].filter(r => (r.distance_km ?? 0) > 1 && (r.average_speed ?? 0) > 0)
+    .sort((a, b) => (b.average_speed ?? 0) - (a.average_speed ?? 0))
+  if (bySpeed[0]) {
+    const r = bySpeed[0]
+    bestRuns.push({
+      label: 'Best Avg Speed',
+      value: `${r.average_speed} km/h`,
+      sub: `${r.distance_km} km · ${fmtDate(r.date)}`,
+    })
+  }
+
+  // Best interval leg (fastest single work leg across all interval sessions)
+  const allLegs = allRuns.flatMap(r =>
+    ((r as any).running_legs ?? []).map((l: any) => ({ ...l, date: r.date }))
+  )
+  const workLegs = allLegs
+    .filter((l: any) => l.leg_type !== 'rest' && (l.speed_kmh ?? 0) > 0)
+    .sort((a: any, b: any) => (b.speed_kmh ?? 0) - (a.speed_kmh ?? 0))
+  if (workLegs[0]) {
+    const l = workLegs[0] as any
+    const inclineNote = l.incline_percent > 0 ? ` · ${l.incline_percent}% incline` : ''
+    bestRuns.push({
+      label: 'Fastest Interval',
+      value: `${l.speed_kmh} km/h`,
+      sub: `${l.duration_mins} min${inclineNote} · ${fmtDate(l.date)}`,
+    })
+  }
+
   return (
     <StatsClient
       totalWorkouts={totalWorkouts}
@@ -319,6 +387,7 @@ async function StatsLoader({ range }: { range: Range }) {
       exercises={exercises}
       avgSpeed={Math.round(avgSpeed * 10) / 10}
       recentRuns={recentRuns}
+      bestRuns={bestRuns}
       cardioSessionCount={allRuns.length}
       muscleSplitSets={Object.fromEntries(Object.entries(muscleSplit).map(([k, v]) => [k, v.sets]))}
       muscleSplitReps={Object.fromEntries(Object.entries(muscleSplit).map(([k, v]) => [k, v.reps]))}

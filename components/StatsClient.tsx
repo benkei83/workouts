@@ -30,6 +30,7 @@ type Props = {
   exercises: ExerciseStat[]
   avgSpeed: number
   recentRuns: { date: string; km: number; speed: number; type: string }[]
+  bestRuns?:  { label: string; value: string; sub?: string }[]
   cardioSessionCount: number
   muscleSplitSets?: Record<string, number>
   muscleSplitReps?: Record<string, number>
@@ -319,6 +320,7 @@ export default function StatsClient({
   exercises,
   avgSpeed,
   recentRuns,
+  bestRuns = [],
   cardioSessionCount,
   muscleSplitSets,
   muscleSplitReps,
@@ -464,6 +466,23 @@ export default function StatsClient({
               </div>
             ))}
           </div>
+
+          {bestRuns.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-4 pt-4 pb-2">
+                Personal records
+              </p>
+              <div className="grid grid-cols-2 gap-px bg-gray-100">
+                {bestRuns.map((r, i) => (
+                  <div key={i} className="bg-white px-4 py-3">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{r.label}</p>
+                    <p className="text-lg font-extrabold text-gray-900 leading-tight">{r.value}</p>
+                    {r.sub && <p className="text-[11px] text-gray-400 mt-0.5 truncate">{r.sub}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {recentRuns.length > 0 && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
