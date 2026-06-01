@@ -21,12 +21,13 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
 
   const supabase = createAdminClient()
 
-  const { data: subs } = await supabase
+  const { data: subs, error: subErr } = await supabase
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
     .eq('user_id', userId)
 
-  if (!subs?.length) return
+  if (subErr) { console.error('[push] failed to fetch subscriptions:', subErr); return }
+  if (!subs?.length) { console.log('[push] no subscriptions for user', userId); return }
 
   const message = JSON.stringify(payload)
 

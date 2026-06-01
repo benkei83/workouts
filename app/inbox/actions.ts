@@ -85,7 +85,7 @@ export async function sendMessage({
     title: senderName,
     body:  pushBody || 'Sent you a message',
     url:   `/inbox/${user.id}`,
-  }).catch(() => {/* non-fatal */})
+  }).catch(err => console.error('[push] sendPushToUser failed:', err))
 
   revalidatePath('/inbox')
   revalidatePath(`/inbox/${recipientId}`)
