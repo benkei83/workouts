@@ -105,6 +105,22 @@ export async function sendReply(otherUserId: string, body: string) {
   })
 
   if (error) return { error: error.message }
+
+  // Push notification to recipient
+  const { data: senderSettings } = await supabase
+    .from('user_settings')
+    .select('screen_name')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const senderName = senderSettings?.screen_name?.trim() || 'Someone'
+  const preview = body.trim().length > 80 ? body.trim().slice(0, 80) + '…' : body.trim()
+
+  sendPushToUser(otherUserId, {
+    title: senderName,
+    body:  preview,
+    url:   `/inbox/${user.id}`,
+  }).catch(err => console.error('[push] sendReply push failed:', err))
+
   revalidatePath(`/inbox/${otherUserId}`)
   revalidatePath('/inbox')
   return { success: true }
