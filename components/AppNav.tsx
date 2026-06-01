@@ -13,6 +13,7 @@ const PRIMARY = [
 
 const MORE = [
   { href: '/programs', label: 'Programs' },
+  { href: '/history',  label: '📋 History' },
   { href: '/weight',   label: '⚖️ Weight' },
   { href: '/goals',    label: '🎯 Goals' },
   { href: '/trophies', label: '🏆 Trophies' },
