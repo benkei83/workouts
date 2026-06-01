@@ -1249,6 +1249,70 @@ export async function deleteProgram(id: string) {
   return { success: true }
 }
 
+export async function saveWorkoutAsProgram(
+  workoutId: string,
+  name: string,
+  description: string | null,
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  // Fetch all strength sets from this workout in order
+  const { data: logs } = await supabase
+    .from('strength_logs')
+    .select('strength_sets ( set_number, exercise_id, exercises ( id, name ) )')
+    .eq('workout_id', workoutId)
+
+  // Build an ordered unique exercise list (preserve first-appearance order)
+  const exerciseOrder: { id: string }[] = []
+  const seen = new Set<string>()
+
+  const allSets = (logs || [])
+    .flatMap((l: any) => l.strength_sets || [])
+    .sort((a: any, b: any) => a.set_number - b.set_number)
+
+  for (const set of allSets) {
+    if (set.exercise_id && !seen.has(set.exercise_id)) {
+      seen.add(set.exercise_id)
+      exerciseOrder.push({ id: set.exercise_id })
+    }
+  }
+
+  if (exerciseOrder.length === 0)
+    return { error: 'No strength exercises found in this workout' }
+
+  // Create the program
+  const { data: program, error: progErr } = await supabase
+    .from('programs')
+    .insert({ name: name.trim(), description: description?.trim() || null, user_id: user.id })
+    .select('id')
+    .single()
+
+  if (progErr || !program) return { error: progErr?.message ?? 'Failed to create program' }
+
+  // Create one workout day
+  const { data: pw, error: pwErr } = await supabase
+    .from('program_workouts')
+    .insert({ program_id: program.id, name: 'Workout A', rotation_order: 1 })
+    .select('id')
+    .single()
+
+  if (pwErr || !pw) return { error: pwErr?.message ?? 'Failed to create workout day' }
+
+  // Add exercises in order
+  await supabase.from('program_exercises').insert(
+    exerciseOrder.map((ex, i) => ({
+      program_workout_id: pw.id,
+      exercise_id:        ex.id,
+      sort_order:         i + 1,
+    }))
+  )
+
+  revalidatePath('/programs')
+  return { success: true, programId: program.id }
+}
+
 export async function addProgramExercise(programWorkoutId: string, exerciseId: string, sortOrder: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
