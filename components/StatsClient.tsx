@@ -26,6 +26,7 @@ type Props = {
   totalKgLifted: number
   totalKm: number
   weeklyBuckets: { label: string; count: number }[]
+  consistencyLabel?: string
   exercises: ExerciseStat[]
   avgSpeed: number
   recentRuns: { date: string; km: number; speed: number; type: string }[]
@@ -314,6 +315,7 @@ export default function StatsClient({
   totalKgLifted,
   totalKm,
   weeklyBuckets,
+  consistencyLabel = '12 weeks',
   exercises,
   avgSpeed,
   recentRuns,
@@ -369,7 +371,7 @@ export default function StatsClient({
       {/* ── Consistency ── */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
         <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
-          Consistency — last 12 weeks
+          Consistency — {consistencyLabel}
         </h2>
         <ConsistencyChart buckets={weeklyBuckets} />
         <div className="flex justify-between mt-1">
