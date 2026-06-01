@@ -1420,3 +1420,141 @@ export async function addSupersetToProgram(programWorkoutId: string, supersetTem
   revalidatePath('/programs')
   return { success: true }
 }
+
+// ── Program sharing ───────────────────────────────────────────────────────────
+
+/** Generate (or return existing) a short share token for a program. */
+export async function generateProgramShareToken(programId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  // Return existing token if already shared
+  const { data: existing } = await supabase
+    .from('programs')
+    .select('share_token')
+    .eq('id', programId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (existing?.share_token) return { success: true, token: existing.share_token as string }
+
+  // Generate a compact token (first 16 chars of a UUID, no dashes)
+  const token = crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+
+  const { error } = await supabase
+    .from('programs')
+    .update({ share_token: token })
+    .eq('id', programId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  return { success: true, token }
+}
+
+/** Revoke sharing for a program. */
+export async function revokeProgramShareToken(programId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const { error } = await supabase
+    .from('programs')
+    .update({ share_token: null })
+    .eq('id', programId)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+/** Public fetch of a shared program by token — no auth required. */
+export async function getSharedProgramByToken(token: string) {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('programs')
+    .select(`
+      id, name, description,
+      program_workouts (
+        id, name, rotation_order,
+        program_exercises (
+          id, sort_order,
+          exercises ( id, name ),
+          superset_templates ( id, name )
+        )
+      )
+    `)
+    .eq('share_token', token)
+    .single()
+
+  return data || null
+}
+
+/** Import a shared program as a copy under the current user's account. */
+export async function importSharedProgram(token: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Sign in to import programs' }
+
+  const source = await getSharedProgramByToken(token)
+  if (!source) return { error: 'Program not found or no longer shared' }
+
+  // Create the program copy
+  const { data: newProgram, error: progErr } = await supabase
+    .from('programs')
+    .insert({ name: source.name, description: source.description, user_id: user.id })
+    .select('id')
+    .single()
+
+  if (progErr || !newProgram) return { error: progErr?.message ?? 'Failed to create program' }
+
+  const sortedDays = [...(source.program_workouts || [])].sort((a, b) => a.rotation_order - b.rotation_order)
+
+  for (const pw of sortedDays) {
+    const { data: newPw, error: pwErr } = await supabase
+      .from('program_workouts')
+      .insert({ program_id: newProgram.id, name: pw.name, rotation_order: pw.rotation_order })
+      .select('id')
+      .single()
+
+    if (pwErr || !newPw) continue
+
+    const sortedExercises = [...(pw.program_exercises || [])].sort((a, b) => a.sort_order - b.sort_order)
+
+    for (const pe of sortedExercises) {
+      if (!(pe as any).exercises?.name) continue
+
+      const exName = (pe as any).exercises.name
+
+      // Find or create this exercise for the importing user
+      const { data: existingEx } = await supabase
+        .from('exercises')
+        .select('id')
+        .ilike('name', exName)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      let exerciseId = existingEx?.id
+      if (!exerciseId) {
+        const { data: newEx } = await supabase
+          .from('exercises')
+          .insert({ name: exName, category: 'strength', user_id: user.id })
+          .select('id')
+          .single()
+        exerciseId = newEx?.id
+      }
+
+      if (exerciseId) {
+        await supabase.from('program_exercises').insert({
+          program_workout_id: newPw.id,
+          exercise_id: exerciseId,
+          sort_order: pe.sort_order,
+        })
+      }
+    }
+  }
+
+  revalidatePath('/programs')
+  return { success: true, id: newProgram.id }
+}

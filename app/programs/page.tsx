@@ -43,7 +43,7 @@ async function ProgramDataLoader() {
   const { data: programs } = await supabase
     .from('programs')
     .select(`
-      *,
+      *, share_token,
       program_workouts (
         *,
         program_exercises (

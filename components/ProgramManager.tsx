@@ -11,6 +11,8 @@ import {
   removeProgramExercise,
   fetchProgramById,
   addWgerExercise,
+  generateProgramShareToken,
+  revokeProgramShareToken,
 } from '@/app/workout/actions'
 import { MUSCLE_GROUPS } from '@/lib/muscleGroups'
 import WgerBrowseModal from '@/components/WgerBrowseModal'
@@ -33,6 +35,7 @@ type Program = {
   id: string
   name: string
   description: string | null
+  share_token?: string | null
   program_workouts: ProgramWorkout[]
 }
 type ActiveProgram = { program_id: string; current_rotation_index: number } | null
@@ -64,6 +67,45 @@ export default function ProgramManager({
   const [isCreatingEx, setIsCreatingEx] = useState(false)
   const [createExError, setCreateExError] = useState<string | null>(null)
   const [wgerModal, setWgerModal] = useState<NewExerciseModal>(null)
+
+  type ShareModal = { programId: string; programName: string; token: string | null } | null
+  const [shareModal, setShareModal] = useState<ShareModal>(null)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
+  const [shareRevoking, setShareRevoking] = useState(false)
+
+  const openShareModal = async (programId: string, programName: string, existingToken?: string | null) => {
+    if (existingToken) {
+      setShareModal({ programId, programName, token: existingToken })
+      return
+    }
+    setShareLoading(true)
+    setShareModal({ programId, programName, token: null })
+    const res = await generateProgramShareToken(programId)
+    if (res?.success && res.token) {
+      setShareModal({ programId, programName, token: res.token })
+      // Keep share_token in local program state too
+      setPrograms(prev => prev.map(p => p.id === programId ? { ...p, share_token: res.token } : p))
+    }
+    setShareLoading(false)
+  }
+
+  const handleRevokeShare = async () => {
+    if (!shareModal) return
+    setShareRevoking(true)
+    await revokeProgramShareToken(shareModal.programId)
+    setPrograms(prev => prev.map(p => p.id === shareModal.programId ? { ...p, share_token: null } : p))
+    setShareModal(null)
+    setShareRevoking(false)
+  }
+
+  const handleCopyLink = (token: string) => {
+    const url = `${window.location.origin}/programs/share/${token}`
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true)
+      setTimeout(() => setShareCopied(false), 2000)
+    })
+  }
 
   type ExSettingsData = Awaited<ReturnType<typeof fetchExerciseForSettings>>
   const [exSettingsModal, setExSettingsModal] = useState<ExSettingsData | null>(null)
@@ -225,6 +267,13 @@ export default function ProgramManager({
               <div className="flex items-center gap-1 flex-shrink-0">
                 <span className="text-gray-300 group-hover:text-gray-900 transition-colors p-2">✏️</span>
                 <button
+                  onClick={e => { e.stopPropagation(); openShareModal(program.id, program.name, program.share_token) }}
+                  className="p-2 transition-colors text-base"
+                  title="Share program"
+                >
+                  {program.share_token ? '🔗' : <span className="text-gray-300 hover:text-gray-600">🔗</span>}
+                </button>
+                <button
                   onClick={e => { e.stopPropagation(); handleDelete(program.id) }}
                   className="text-gray-300 hover:text-red-500 font-bold p-2 transition-colors text-lg"
                 >
@@ -284,6 +333,63 @@ export default function ProgramManager({
             </form>
           </div>
         </div>
+      )}
+
+      {/* SHARE MODAL */}
+      {shareModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex justify-between items-center mb-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Share Program</h2>
+                <p className="text-sm text-gray-400 mt-0.5">{shareModal.programName}</p>
+              </div>
+              <button
+                onClick={() => { setShareModal(null); setShareCopied(false) }}
+                className="text-gray-400 hover:text-gray-700 font-bold p-2"
+              >✕</button>
+            </div>
+
+            {shareLoading ? (
+              <div className="flex items-center justify-center py-8 gap-2">
+                <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                <span className="text-sm text-gray-400">Generating link…</span>
+              </div>
+            ) : shareModal.token ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">
+                  Anyone with this link can view the program structure and import it to their own account.
+                </p>
+
+                {/* Link display */}
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs font-mono text-gray-600 truncate">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/programs/share/${shareModal.token}` : `/programs/share/${shareModal.token}`}
+                  </div>
+                  <button
+                    onClick={() => handleCopyLink(shareModal.token!)}
+                    className={`px-4 rounded-xl font-bold text-sm transition-colors flex-shrink-0 ${
+                      shareCopied
+                        ? 'bg-green-600 text-white'
+                        : 'bg-black text-white hover:bg-gray-800'
+                    }`}
+                  >
+                    {shareCopied ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+
+                <button
+                  onClick={handleRevokeShare}
+                  disabled={shareRevoking}
+                  className="w-full text-xs font-semibold text-red-400 hover:text-red-600 transition-colors py-1 disabled:opacity-50"
+                >
+                  {shareRevoking ? 'Revoking…' : 'Revoke link'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* NEW EXERCISE MODAL — portalled to body so it sits above all other modals */}
