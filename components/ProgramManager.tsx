@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import {
   createProgram,
   updateProgram,
@@ -9,7 +10,13 @@ import {
   addSupersetToProgram,
   removeProgramExercise,
   fetchProgramById,
+  addWgerExercise,
 } from '@/app/workout/actions'
+import { MUSCLE_GROUPS } from '@/lib/muscleGroups'
+import WgerBrowseModal from '@/components/WgerBrowseModal'
+import type { WgerItem } from '@/components/WgerBrowseModal'
+import ExerciseSettingsCard from '@/components/exercises/ExerciseSettingsCard'
+import { fetchExerciseForSettings } from '@/app/exercises/[id]/actions'
 
 type Exercise = { id: string; name: string }
 type SupersetTemplate = { id: string; name: string }
@@ -30,9 +37,11 @@ type Program = {
 }
 type ActiveProgram = { program_id: string; current_rotation_index: number } | null
 
+type NewExerciseModal = { programWorkoutId: string; currentCount: number } | null
+
 export default function ProgramManager({
   initialPrograms,
-  exercises,
+  exercises: initialExercises,
   supersetTemplates = [],
   activeProgram,
 }: {
@@ -43,11 +52,30 @@ export default function ProgramManager({
   activeProgram: ActiveProgram
 }) {
   const [programs, setPrograms] = useState(initialPrograms)
+  const [exerciseList, setExerciseList] = useState<Exercise[]>(initialExercises)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editingProgram, setEditingProgram] = useState<Program | null>(null)
   const [activeDay, setActiveDay] = useState(0)
   const [isPending, startTransition] = useTransition()
   const [isLoadingEdit, setIsLoadingEdit] = useState(false)
+  const [newExerciseModal, setNewExerciseModal] = useState<NewExerciseModal>(null)
+  const [newExName, setNewExName] = useState('')
+  const [newExMuscle, setNewExMuscle] = useState('')
+  const [isCreatingEx, setIsCreatingEx] = useState(false)
+  const [createExError, setCreateExError] = useState<string | null>(null)
+  const [wgerModal, setWgerModal] = useState<NewExerciseModal>(null)
+
+  type ExSettingsData = Awaited<ReturnType<typeof fetchExerciseForSettings>>
+  const [exSettingsModal, setExSettingsModal] = useState<ExSettingsData | null>(null)
+  const [isLoadingExSettings, setIsLoadingExSettings] = useState(false)
+
+  const openExerciseSettings = async (exerciseId: string) => {
+    setIsLoadingExSettings(true)
+    setExSettingsModal(null)
+    const data = await fetchExerciseForSettings(exerciseId)
+    setExSettingsModal(data)
+    setIsLoadingExSettings(false)
+  }
 
   const handleCreate = (formData: FormData) => {
     startTransition(async () => {
@@ -90,6 +118,43 @@ export default function ProgramManager({
         if (fresh) setEditingProgram(fresh as Program)
       }
     })
+  }
+
+  const handleCreateAndAddExercise = async () => {
+    if (!newExerciseModal || !newExName.trim()) return
+    setIsCreatingEx(true)
+    setCreateExError(null)
+    const res = await addWgerExercise(newExName.trim(), newExMuscle || null)
+    if (res?.error) {
+      setCreateExError(res.error)
+      setIsCreatingEx(false)
+      return
+    }
+    const newId = res.id!
+    const newName = newExName.trim()
+    // Add to local exercise list if it's truly new
+    if (!res.existed) {
+      setExerciseList(prev => [...prev, { id: newId, name: newName }].sort((a, b) => a.name.localeCompare(b.name)))
+    }
+    // Add to the program workout
+    handleAddExercise(newExerciseModal.programWorkoutId, newId, newExerciseModal.currentCount)
+    // Reset & close
+    setNewExName('')
+    setNewExMuscle('')
+    setIsCreatingEx(false)
+    setNewExerciseModal(null)
+  }
+
+  const handleWgerAdded = (item: WgerItem, id: string) => {
+    if (!wgerModal) return
+    // Add to local list (sorted) if not already there
+    setExerciseList(prev =>
+      prev.some(e => e.id === id)
+        ? prev
+        : [...prev, { id, name: item.name }].sort((a, b) => a.name.localeCompare(b.name))
+    )
+    // Slot into the program workout immediately
+    handleAddExercise(wgerModal.programWorkoutId, id, wgerModal.currentCount)
   }
 
   const handleAddSuperset = (programWorkoutId: string, supersetTemplateId: string, currentCount: number) => {
@@ -221,6 +286,115 @@ export default function ProgramManager({
         </div>
       )}
 
+      {/* NEW EXERCISE MODAL — portalled to body so it sits above all other modals */}
+      {newExerciseModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="text-lg font-bold text-gray-900">New Exercise</h2>
+              <button
+                onClick={() => { setNewExerciseModal(null); setNewExName(''); setNewExMuscle(''); setCreateExError(null) }}
+                className="text-gray-400 hover:text-gray-700 font-bold p-2"
+              >✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Exercise name</label>
+                <input
+                  type="text"
+                  value={newExName}
+                  onChange={e => setNewExName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreateAndAddExercise() }}
+                  placeholder="e.g., Bulgarian Split Squat"
+                  autoFocus
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Muscle group (optional)</label>
+                <select
+                  value={newExMuscle}
+                  onChange={e => setNewExMuscle(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-black outline-none text-sm"
+                >
+                  <option value="">— None —</option>
+                  {MUSCLE_GROUPS.map(g => (
+                    <option key={g.id} value={g.id}>{g.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {createExError && (
+                <p className="text-sm text-red-500 font-medium">{createExError}</p>
+              )}
+
+              <button
+                onClick={handleCreateAndAddExercise}
+                disabled={isCreatingEx || !newExName.trim()}
+                className="w-full bg-black text-white font-bold rounded-xl py-3 disabled:opacity-40 active:scale-[0.98] transition-all"
+              >
+                {isCreatingEx ? 'Creating…' : 'Create & Add to Program'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* EXERCISE SETTINGS MODAL — portalled to body */}
+      {(isLoadingExSettings || exSettingsModal) && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center px-6 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {isLoadingExSettings ? 'Loading…' : exSettingsModal?.exercise.name}
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">Exercise settings</p>
+              </div>
+              <button
+                onClick={() => { setExSettingsModal(null); setIsLoadingExSettings(false) }}
+                className="text-gray-400 hover:text-gray-700 font-bold p-2 flex-shrink-0"
+              >✕</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-6 pb-6">
+              {isLoadingExSettings && (
+                <div className="flex items-center justify-center py-16 gap-2">
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                  <span className="text-sm text-gray-400 font-medium">Loading settings…</span>
+                </div>
+              )}
+              {!isLoadingExSettings && exSettingsModal && (
+                <ExerciseSettingsCard
+                  key={exSettingsModal.exercise.id}
+                  exerciseId={exSettingsModal.exercise.id}
+                  exerciseName={exSettingsModal.exercise.name}
+                  muscleGroup={(exSettingsModal.exercise as any).muscle_group ?? null}
+                  equipment={(exSettingsModal.exercise as any).equipment ?? null}
+                  settings={exSettingsModal.settings as any}
+                />
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* WGER BROWSE MODAL — portalled to body */}
+      {wgerModal && typeof document !== 'undefined' && createPortal(
+        <div style={{ zIndex: 9999, position: 'relative' }}>
+          <WgerBrowseModal
+            libraryNames={new Set(exerciseList.map(e => e.name.toLowerCase()))}
+            onClose={() => setWgerModal(null)}
+            onAdded={handleWgerAdded}
+          />
+        </div>,
+        document.body
+      )}
+
       {/* EDIT MODAL */}
       {editingProgram && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center p-4 z-50">
@@ -293,7 +467,7 @@ export default function ProgramManager({
                 .map((pw, i) => {
                   if (i !== activeDay) return null
                   const sortedExercises = [...(pw.program_exercises || [])].sort((a, b) => a.sort_order - b.sort_order)
-                  const availableExercises = exercises.filter(ex => !sortedExercises.some(pe => pe.exercise_id === ex.id))
+                  const availableExercises = exerciseList.filter(ex => !sortedExercises.some(pe => pe.exercise_id === ex.id))
 
                   return (
                     <div key={pw.id} className="space-y-3">
@@ -305,20 +479,28 @@ export default function ProgramManager({
 
                       {sortedExercises.map(pe => (
                         <div key={pe.id} className={`flex justify-between items-center rounded-xl px-4 py-3 ${pe.superset_template_id ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'}`}>
-                          <div>
+                          <div
+                            className={`flex-1 min-w-0 ${pe.exercise_id ? 'cursor-pointer' : ''}`}
+                            onClick={() => pe.exercise_id && openExerciseSettings(pe.exercise_id)}
+                          >
                             {pe.superset_template_id ? (
                               <>
                                 <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">🔄 Superset</p>
                                 <p className="font-bold text-sm text-gray-900">{(pe as any).superset_templates?.name || 'Superset'}</p>
                               </>
                             ) : (
-                              <span className="font-bold text-sm text-gray-900">{pe.exercises?.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-sm text-gray-900">{pe.exercises?.name}</span>
+                                {pe.exercise_id && (
+                                  <span className="text-[10px] text-gray-400 font-medium">⚙️</span>
+                                )}
+                              </div>
                             )}
                           </div>
                           <button
                             onClick={() => handleRemoveExercise(pe.id)}
                             disabled={isPending}
-                            className="text-gray-300 hover:text-red-500 font-bold text-lg transition-colors"
+                            className="text-gray-300 hover:text-red-500 font-bold text-lg transition-colors ml-3 flex-shrink-0"
                           >
                             ✕
                           </button>
@@ -348,6 +530,22 @@ export default function ProgramManager({
                           </button>
                         </div>
                       )}
+
+                      {/* Create / browse new exercise */}
+                      <div className="flex gap-3 pt-0.5">
+                        <button
+                          onClick={() => setNewExerciseModal({ programWorkoutId: pw.id, currentCount: sortedExercises.length })}
+                          className="text-xs font-semibold text-gray-400 hover:text-gray-700 transition-colors"
+                        >
+                          ＋ Create new
+                        </button>
+                        <button
+                          onClick={() => setWgerModal({ programWorkoutId: pw.id, currentCount: sortedExercises.length })}
+                          className="text-xs font-semibold text-blue-400 hover:text-blue-600 transition-colors"
+                        >
+                          🔍 Browse wger
+                        </button>
+                      </div>
 
                       {/* Add superset template */}
                       {supersetTemplates.length > 0 && (

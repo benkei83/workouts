@@ -3,6 +3,29 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+export async function fetchExerciseForSettings(exerciseId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: ex } = await supabase
+    .from('exercises')
+    .select('id, name, muscle_group, equipment')
+    .eq('id', exerciseId)
+    .maybeSingle()
+
+  const { data: settings } = await supabase
+    .from('user_exercise_settings')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('exercise_id', exerciseId)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (!ex) return null
+  return { exercise: ex, settings: settings ?? null }
+}
+
 export async function saveExerciseTags(
   exerciseId: string,
   formData: FormData,
