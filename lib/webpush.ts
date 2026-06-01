@@ -1,12 +1,6 @@
 import webpush from 'web-push'
 import { createAdminClient } from './supabase/admin'
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!,
-)
-
 export interface PushPayload {
   title: string
   body: string
@@ -18,6 +12,13 @@ export interface PushPayload {
  * Automatically removes stale subscriptions (410 Gone).
  */
 export async function sendPushToUser(userId: string, payload: PushPayload) {
+  // Initialise lazily so this never runs during the Next.js build
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL!,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!,
+  )
+
   const supabase = createAdminClient()
 
   const { data: subs } = await supabase
