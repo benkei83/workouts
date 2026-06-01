@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { generateProgramShareToken } from '@/app/workout/actions'
+import { sendPushToUser } from '@/lib/webpush'
 
 // ── User search ───────────────────────────────────────────────────────────────
 
@@ -68,6 +69,24 @@ export async function sendMessage({
   })
 
   if (error) return { error: error.message }
+
+  // Push notification to recipient
+  const { data: senderSettings } = await supabase
+    .from('user_settings')
+    .select('screen_name')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  const senderName = senderSettings?.screen_name?.trim() || 'Someone'
+  const pushBody = program_name
+    ? `Shared a program: ${program_name}`
+    : body.trim().length > 80 ? body.trim().slice(0, 80) + '…' : body.trim()
+
+  sendPushToUser(recipientId, {
+    title: senderName,
+    body:  pushBody || 'Sent you a message',
+    url:   `/inbox/${user.id}`,
+  }).catch(() => {/* non-fatal */})
+
   revalidatePath('/inbox')
   revalidatePath(`/inbox/${recipientId}`)
   return { success: true }

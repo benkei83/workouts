@@ -77,3 +77,41 @@ self.addEventListener('fetch', event => {
     return
   }
 })
+
+// ── Push notifications ────────────────────────────────────────────────────────
+self.addEventListener('push', event => {
+  let data = {}
+  try { data = event.data?.json() ?? {} } catch { data = {} }
+
+  const title   = data.title || 'Yeah Buddy'
+  const options = {
+    body:  data.body  || '',
+    icon:  '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data:  { url: data.url || '/' },
+    vibrate: [100, 50, 100],
+  }
+
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+// ── Notification click → open / focus the right page ─────────────────────────
+self.addEventListener('notificationclick', event => {
+  event.notification.close()
+  const url = event.notification.data?.url || '/'
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then(clientList => {
+        // If a window with that URL is already open, focus it
+        for (const client of clientList) {
+          if (client.url.endsWith(url) && 'focus' in client) {
+            return client.focus()
+          }
+        }
+        // Otherwise open a new window
+        if (clients.openWindow) return clients.openWindow(url)
+      })
+  )
+})

@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useRef } from 'react'
 import { updateUserSettings } from '@/app/settings/actions'
 import type { UserSettings } from '@/lib/settings'
+import PushSubscribeButton from '@/components/PushSubscribeButton'
 
 const REST_PRESETS: { label: string; value: number | null }[] = [
   { label: '↑ Count up', value: null  },
@@ -369,6 +370,13 @@ export default function SettingsForm({
               <Toggle on={trophyToast} onChange={handleTrophyToast} />
             </div>
           </div>
+        </Row>
+      </Section>
+
+      {/* ── NOTIFICATIONS ── */}
+      <Section title="Notifications">
+        <Row>
+          <PushSubscribeButton />
         </Row>
       </Section>
 
