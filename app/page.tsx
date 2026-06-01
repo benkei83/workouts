@@ -8,18 +8,6 @@ import { computeWorkoutOutcomes, computeWorkoutStreak } from '@/lib/workoutOutco
 import type { Outcome } from '@/lib/workoutOutcomes'
 import FocusDashboard from '@/components/FocusDashboard'
 
-function timeAgo(iso: string): string {
-  const diff  = Date.now() - new Date(iso).getTime()
-  const mins  = Math.floor(diff / 60_000)
-  const hours = Math.floor(diff / 3_600_000)
-  const days  = Math.floor(diff / 86_400_000)
-  if (mins < 1)   return 'just now'
-  if (mins < 60)  return `${mins}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7)   return `${days}d ago`
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 // ==========================================
 // 1. SERVER ACTIONS
 // ==========================================
@@ -283,19 +271,6 @@ async function WorkoutManager({ userId }: { userId: string }) {
         )}
       </section>
 
-      {/* COMMUNITY FEED PREVIEW */}
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Community</h3>
-          <Link href="/feed" className="text-xs font-bold text-gray-500 hover:text-black transition-colors">
-            See all →
-          </Link>
-        </div>
-        <Suspense fallback={<div className="animate-pulse h-24 bg-gray-200 rounded-2xl" />}>
-          <FeedPreview />
-        </Suspense>
-      </section>
-
       {/* THE HISTORY SECTION */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -493,63 +468,3 @@ async function WorkoutManager({ userId }: { userId: string }) {
   )
 }
 
-// ── Community feed preview ────────────────────────────────────────────────────
-
-async function FeedPreview() {
-  const supabase = await createClient()
-
-  let posts: { id: string; post_type: string; screen_name: string | null; workout_title: string | null; workout_summary: any; message: string | null; created_at: string }[] = []
-
-  try {
-    const { data } = await supabase
-      .from('feed_posts')
-      .select('id, post_type, screen_name, workout_title, workout_summary, message, created_at')
-      .eq('is_visible', true)
-      .order('created_at', { ascending: false })
-      .limit(3)
-    posts = data || []
-  } catch { /* table not created yet */ }
-
-  if (posts.length === 0) {
-    return (
-      <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-gray-200">
-        <p className="text-sm text-gray-400">No posts yet — finish a workout to kick things off!</p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      {posts.map(post => (
-        <Link key={post.id} href="/feed" className="block bg-white rounded-xl border border-gray-100 px-4 py-3 hover:border-gray-300 transition-colors">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-extrabold text-gray-900">
-              {post.screen_name?.trim() || 'Anonymous'}
-            </span>
-            <span className="text-[10px] text-gray-400">{timeAgo(post.created_at)}</span>
-          </div>
-          {post.post_type === 'workout' ? (
-            <div>
-              <p className="text-xs font-semibold text-gray-700 truncate">
-                💪 {post.workout_title ?? 'Workout'}
-              </p>
-              {(post.workout_summary?.prs?.length ?? 0) > 0 && (
-                <p className="text-[10px] text-yellow-600 font-bold mt-0.5">
-                  🏆 {post.workout_summary.prs.length} PR{post.workout_summary.prs.length > 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-600 line-clamp-2">{post.message}</p>
-          )}
-        </Link>
-      ))}
-      <Link
-        href="/feed"
-        className="w-full flex items-center justify-center py-2.5 text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors"
-      >
-        Open community feed →
-      </Link>
-    </div>
-  )
-}
