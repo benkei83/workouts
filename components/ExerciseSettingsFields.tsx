@@ -101,6 +101,7 @@ export default function ExerciseSettingsFields({
   const [deloadMult,   setDeloadMult]   = useState(settings?.deload_multiplier ?? 2.0)
 
   const isDouble = protocol === 'double'
+  const isAmrap  = protocol === 'amrap'
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -116,6 +117,7 @@ export default function ExerciseSettingsFields({
           <option value="manual">Manual (No Auto-Progression)</option>
           <option value="linear">Linear (e.g., 5x5)</option>
           <option value="double">Double Progression (e.g., 3x8-12)</option>
+          <option value="amrap">AMRAP (fixed sets + max-reps set)</option>
         </select>
       </div>
 
@@ -125,20 +127,19 @@ export default function ExerciseSettingsFields({
       {isDouble ? (
         <>
           {/* "reps" = upper bound (max), "reps_min" = lower bound */}
-          <NumericStepper
-            label="Min Reps"
-            name="reps_min"
-            value={repsMin}
-            onChange={v => setRepsMin(Math.min(v, reps - 1))}
-            step={1} min={1}
-          />
-          <NumericStepper
-            label="Max Reps"
-            name="reps"
-            value={reps}
-            onChange={v => setReps(Math.max(v, repsMin + 1))}
-            step={1} min={1}
-          />
+          <NumericStepper label="Min Reps"  name="reps_min" value={repsMin} onChange={v => setRepsMin(Math.min(v, reps - 1))} step={1} min={1} />
+          <NumericStepper label="Max Reps"  name="reps"     value={reps}    onChange={v => setReps(Math.max(v, repsMin + 1))} step={1} min={1} />
+        </>
+      ) : isAmrap ? (
+        <>
+          {/* "reps_min" = fixed reps per non-AMRAP set; "reps" = GAP above fixed that triggers progression */}
+          <NumericStepper label="Fixed Reps"  name="reps_min" value={repsMin} onChange={v => setRepsMin(Math.max(1, v))} step={1} min={1} />
+          <NumericStepper label="Gap (+reps)" name="reps"     value={reps}    onChange={v => setReps(Math.max(1, v))}    step={1} min={1} />
+          <div className="col-span-2 -mt-1">
+            <p className="text-xs text-gray-400">
+              AMRAP target = {repsMin} + {reps} = <strong className="text-gray-700">{repsMin + reps} reps</strong>. Increments fixed to {repsMin + 1} when hit.
+            </p>
+          </div>
         </>
       ) : (
         <>
@@ -173,14 +174,19 @@ export default function ExerciseSettingsFields({
 
       {/* Success-side settings */}
       <NumericStepper
-        label="Auto-Progression Step"
+        label={isAmrap ? 'Rep Increment' : 'Auto-Progression Step'}
         name="progression_rate"
         value={progRate}
-        onChange={setProgRate}
-        step={0.5}
-        min={0}
+        onChange={v => setProgRate(isAmrap ? Math.round(v) : v)}
+        step={isAmrap ? 1 : 0.5}
+        min={isAmrap ? 1 : 0}
         accent="green"
       />
+      {isAmrap && (
+        <div className="col-span-2 -mt-1">
+          <p className="text-xs text-gray-400">+{Math.round(progRate)} rep{Math.round(progRate) !== 1 ? 's' : ''} to fixed sets per success — not kg.</p>
+        </div>
+      )}
       <NumericStepper
         label="Min Successes"
         name="min_successes"

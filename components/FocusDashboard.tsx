@@ -113,8 +113,8 @@ export default async function FocusDashboard({
     ? `${targetRepsMin} + AMRAP`
     : `${targetReps}`
 
-  // For rep-goal progress bar
-  const goalReps    = targetReps
+  // For rep-goal progress bar — goal = fixed + gap
+  const goalReps    = isRepGoal ? targetRepsMin + targetReps : targetReps
   const currentBest = maxReps ?? 0
   const pct         = isRepGoal ? Math.min(100, Math.round((currentBest / goalReps) * 100)) : 0
 

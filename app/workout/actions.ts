@@ -213,9 +213,10 @@ export async function saveStrengthExercise(
     .single()
 
   if (setting && setting.protocol && setting.protocol !== 'manual') {
-    let newFailures = Number(setting.current_failures) || 0
-    let newSuccesses = Number(setting.current_successes) || 0
-    let newWeight = Number(setting.current_weight) || 0
+    let newFailures      = Number(setting.current_failures)  || 0
+    let newSuccesses     = Number(setting.current_successes) || 0
+    let newWeight        = Number(setting.current_weight)    || 0
+    let newTargetRepsMin = Number(setting.target_reps_min)   || 1  // only mutated by AMRAP
     let changed = false
 
     const targetSets = Number(setting.target_sets) || 5
@@ -327,6 +328,55 @@ export async function saveStrengthExercise(
         }
         changed = true
       }
+    } else if (setting.protocol === 'amrap') {
+      // ── AMRAP: fixed sets + one max-reps (AMRAP) set ──────
+      // target_reps_min = reps per fixed set (this is what increments over time)
+      // target_reps     = AMRAP threshold that triggers an increment (e.g. 10 pull-ups)
+      // progression_rate = rep increment per success (usually 1)
+
+      const fixedTarget  = Math.max(1, Number(setting.target_reps_min) || 1)
+      const amrapDelta   = Math.max(1, Number(setting.target_reps)     || 3)
+      const amrapGoal    = fixedTarget + amrapDelta  // dynamic: gap stays constant as fixed reps grow
+
+      if (cleanSets.length > 0) {
+        // The set with the most reps is the AMRAP set
+        const amrapReps = Math.max(...cleanSets.map(s => Number(s.reps)))
+
+        // All sets (including the AMRAP set) should hit at least the fixed target
+        const setsHittingFixed = cleanSets.filter(s => Number(s.reps) >= fixedTarget).length
+        const fixedComplete    = setsHittingFixed >= targetSets
+
+        if (fixedComplete && amrapReps >= amrapGoal) {
+          // Full success: AMRAP hit the goal → increment fixed reps
+          isPerfectSession = true
+          newSuccesses += 1
+          newFailures   = 0
+          if (newSuccesses >= minSuccesses) {
+            newTargetRepsMin = fixedTarget + Math.round(progRate)
+            newSuccesses     = 0
+          }
+          newWeight = actualWeight  // weight unchanged (bodyweight or stays same)
+          changed   = true
+        } else if (fixedComplete) {
+          // Maintenance: fixed sets hit but AMRAP not at goal yet — reset any failure streak
+          if (newFailures !== 0) {
+            newFailures = 0
+            newWeight   = actualWeight
+            changed     = true
+          }
+        } else {
+          // Failed to hit fixed reps on all sets
+          newSuccesses = 0
+          newFailures += 1
+          if (newFailures >= maxFails) {
+            // Deload: drop fixed reps by progression_rate
+            newTargetRepsMin = Math.max(1, fixedTarget - Math.round(progRate))
+            newFailures      = 0
+          }
+          newWeight = actualWeight
+          changed   = true
+        }
+      }
     }
 
     // 3. APPLY SETTINGS UPDATE
@@ -347,7 +397,7 @@ export async function saveStrengthExercise(
         current_weight: newWeight,
         target_sets: setting.target_sets,
         target_reps: setting.target_reps,
-        target_reps_min: setting.target_reps_min ?? 8,
+        target_reps_min: newTargetRepsMin,
         increment_step: setting.increment_step,
         progression_rate: setting.progression_rate,
         protocol: setting.protocol,
@@ -964,11 +1014,12 @@ export async function addWgerExercise(name: string, muscle_group: string | null,
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Unauthorized' }
 
-  // If it already exists (by name, case-insensitive), just return it
+  // Check if this user already has an exercise with this name
   const { data: existing } = await supabase
     .from('exercises')
     .select('id')
     .ilike('name', name)
+    .eq('user_id', user.id)
     .maybeSingle()
 
   if (existing) return { success: true, id: existing.id, existed: true }
@@ -1050,7 +1101,7 @@ export async function updateExerciseSettings(exerciseId: string, settings: any) 
   const { error } = await supabase.from('user_exercise_settings').insert({
     user_id: user.id,
     exercise_id: exerciseId,
-    current_weight: settings.weight || null,
+    current_weight: settings.weight ?? null,
     target_sets: settings.sets || null,
     target_reps: settings.reps || null,
     target_reps_min: settings.reps_min || 8,

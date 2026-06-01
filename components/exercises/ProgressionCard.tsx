@@ -60,12 +60,21 @@ export default function ProgressionCard({
   const dotsTotal  = hasFailures ? maxFail  : minSucc
   const dotsFilled = hasFailures ? failures : successes
 
-  const isDouble = protocol === 'double'
+  const isDouble  = protocol === 'double'
+  const isAmrap   = protocol === 'amrap'
+  const amrapGoal = targetRepsMin + targetReps   // gap stored in target_reps
 
-  // Footer line describes what "a qualifying session" means
-  const footerText = isDouble
+  const footerText = isAmrap
+    ? `${targetSets - 1}×${targetRepsMin} fixed + AMRAP ≥ ${amrapGoal} · +${Math.round(progRate)} rep/step`
+    : isDouble
     ? `Rep range ${targetRepsMin}–${targetReps} · +${progRate}kg per step`
     : `Target ${targetSets} × ${targetReps} reps · +${progRate}kg per step`
+
+  // For AMRAP: journey shows fixed reps → computed goal (fixed + gap)
+  const leftValue  = isAmrap ? targetRepsMin : currentWeight
+  const rightValue = isAmrap ? amrapGoal     : nextWeight
+  const unit       = isAmrap ? 'reps'        : 'kg'
+  const rightColor = isAmrap ? '#a855f7'     : (hasFailures ? '#f87171' : '#22c55e')
 
   const headerLabel = hasFailures
     ? 'Deload warning'
@@ -91,10 +100,10 @@ export default function ProgressionCard({
       {/* Journey row */}
       <div className="flex items-center justify-between gap-2">
 
-        {/* Left: current weight */}
+        {/* Left: current weight or fixed reps (AMRAP) */}
         <div className="text-center min-w-[56px]">
-          <p className={`text-2xl font-extrabold leading-none ${accentLeft}`}>{currentWeight}</p>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">current</p>
+          <p className={`text-2xl font-extrabold leading-none ${accentLeft}`}>{leftValue}</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{unit}</p>
         </div>
 
         {/* Centre: dots + label */}
@@ -109,13 +118,13 @@ export default function ProgressionCard({
           </p>
         </div>
 
-        {/* Right: next / deload weight */}
+        {/* Right: goal reps (AMRAP) or next/deload weight */}
         <div className="text-center min-w-[56px]">
-          <p className={`text-2xl font-extrabold leading-none ${accentRight}`}>
-            {hasFailures ? deloadWeight : nextWeight}
+          <p className="text-2xl font-extrabold leading-none" style={{ color: rightColor }}>
+            {isAmrap ? rightValue : hasFailures ? deloadWeight : nextWeight}
           </p>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">
-            {hasFailures ? 'if deload' : 'next'}
+            {isAmrap ? 'goal' : hasFailures ? 'if deload' : 'next'}
           </p>
         </div>
 

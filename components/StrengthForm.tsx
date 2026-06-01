@@ -132,10 +132,20 @@ export default function StrengthForm({
     // Restore sets from draft (selectedExercise is already resolved above)
     if (draft?.sets && draft.sets.length > 0) return draft.sets
 
-    const defaultEx = exercises.find(ex => ex.id === selectedExercise)
-    const tSets = defaultEx?.settings?.target_sets || initialSets
-    const tReps = defaultEx?.settings?.target_reps || initialReps
-    const tWeight = defaultEx?.settings?.current_weight || initialWeight
+    const defaultEx  = exercises.find(ex => ex.id === selectedExercise)
+    const tSets      = defaultEx?.settings?.target_sets    || initialSets
+    const tReps      = defaultEx?.settings?.target_reps    || initialReps
+    const tRepsMin   = defaultEx?.settings?.target_reps_min || tReps
+    const tWeight    = defaultEx?.settings?.current_weight ?? initialWeight
+    const isAmrapEx  = defaultEx?.settings?.protocol === 'amrap'
+
+    if (isAmrapEx && tSets > 1) {
+      // First N-1 sets: fixed reps; last set: AMRAP (pre-fill with 0 so user enters their actual count)
+      return [
+        ...Array.from({ length: tSets - 1 }, () => ({ weight: tWeight, reps: tRepsMin, rpe: null })),
+        { weight: tWeight, reps: 0, rpe: null },
+      ]
+    }
 
     return Array.from({ length: tSets }, () => ({
       weight: tWeight,
@@ -163,15 +173,20 @@ export default function StrengthForm({
   useEffect(() => {
     if (!editData && activeExerciseData) {
       if (suppressPreFillRef.current) return  // restored draft — keep its sets
-      const tSets = activeExerciseData.settings?.target_sets || initialSets
-      const tReps = activeExerciseData.settings?.target_reps || initialReps
-      const tWeight = activeExerciseData.settings?.current_weight || initialWeight
+      const tSets    = activeExerciseData.settings?.target_sets     || initialSets
+      const tReps    = activeExerciseData.settings?.target_reps     || initialReps
+      const tRepsMin = activeExerciseData.settings?.target_reps_min || tReps
+      const tWeight  = activeExerciseData.settings?.current_weight  ?? initialWeight
+      const isAmrapEx = activeExerciseData.settings?.protocol === 'amrap'
 
-      setSets(Array.from({ length: tSets }, () => ({
-        weight: tWeight,
-        reps: tReps,
-        rpe: null,
-      })))
+      if (isAmrapEx && tSets > 1) {
+        setSets([
+          ...Array.from({ length: tSets - 1 }, () => ({ weight: tWeight, reps: tRepsMin, rpe: null })),
+          { weight: tWeight, reps: 0, rpe: null },
+        ])
+      } else {
+        setSets(Array.from({ length: tSets }, () => ({ weight: tWeight, reps: tReps, rpe: null })))
+      }
     }
   }, [selectedExercise, activeExerciseData, editData, initialSets, initialReps, initialWeight])
 
@@ -205,20 +220,54 @@ export default function StrengthForm({
 
   const handleInlineSettingsSave = async (formData: FormData) => {
     setIsSubmitting(true)
+    const newWeight   = parseFloat(formData.get('weight') as string)
+    const newSets     = parseInt(formData.get('sets') as string)     || 5
+    const newReps     = parseInt(formData.get('reps') as string)     || 5
+    const newRepsMin  = parseInt(formData.get('reps_min') as string) || 8
+    const newProtocol = formData.get('protocol') as string
+    const newIncrement= parseFloat(formData.get('increment') as string) || 2.5
+
     await updateExerciseSettings(selectedExercise, {
-      sets: parseInt(formData.get('sets') as string) || 5,
-      reps: parseInt(formData.get('reps') as string) || 5,
-      reps_min: parseInt(formData.get('reps_min') as string) || 8,
-      weight: parseFloat(formData.get('weight') as string) || 0,
-      increment: parseFloat(formData.get('increment') as string) || 2.5,
+      sets:             newSets,
+      reps:             newReps,
+      reps_min:         newRepsMin,
+      weight:           isNaN(newWeight) ? 0 : newWeight,
+      increment:        newIncrement,
       progression_rate: parseFloat(formData.get('progression_rate') as string) || 2.5,
-      protocol: formData.get('protocol') as string,
-      min_successes: parseInt(formData.get('min_successes') as string) || 1,
-      max_failures: parseInt(formData.get('max_failures') as string) || 3,
-      deload_multiplier: parseFloat(formData.get('deload_multiplier') as string) || 2.0,
-      current_failures: activeExerciseData?.settings?.current_failures || 0,
-      current_successes: activeExerciseData?.settings?.current_successes || 0,
+      protocol:         newProtocol,
+      min_successes:    parseInt(formData.get('min_successes') as string)    || 1,
+      max_failures:     parseInt(formData.get('max_failures') as string)     || 3,
+      deload_multiplier:parseFloat(formData.get('deload_multiplier') as string) || 2.0,
+      current_failures: activeExerciseData?.settings?.current_failures  || 0,
+      current_successes:activeExerciseData?.settings?.current_successes || 0,
     })
+
+    // Update local exerciseList so pre-fill reflects new settings immediately
+    const updatedSettings = {
+      ...(activeExerciseData?.settings ?? {}),
+      target_sets:      newSets,
+      target_reps:      newReps,
+      target_reps_min:  newRepsMin,
+      current_weight:   isNaN(newWeight) ? 0 : newWeight,
+      increment_step:   newIncrement,
+      protocol:         newProtocol,
+    }
+    setExerciseList(prev => prev.map(ex =>
+      ex.id === selectedExercise ? { ...ex, settings: updatedSettings } : ex
+    ))
+
+    // Re-trigger pre-fill with the new values
+    const isAmrapEx = newProtocol === 'amrap'
+    const tWeight   = isNaN(newWeight) ? 0 : newWeight
+    if (isAmrapEx && newSets > 1) {
+      setSets([
+        ...Array.from({ length: newSets - 1 }, () => ({ weight: tWeight, reps: newRepsMin, rpe: null })),
+        { weight: tWeight, reps: 0, rpe: null },
+      ])
+    } else {
+      setSets(Array.from({ length: newSets }, () => ({ weight: tWeight, reps: newReps, rpe: null })))
+    }
+
     setIsSubmitting(false)
     setUiMode('select')
   }
@@ -431,13 +480,23 @@ export default function StrengthForm({
         {sets.map((set, index) => {
           const isChecked = checkedSets.has(index)
           const isCheated = set.rpe != null && set.rpe > 10
-          // Show RPE row when the set is done or already has a value (edit mode)
-          const showRpe = isChecked || (set.rpe != null)
+          const showRpe   = isChecked || (set.rpe != null)
+          const isAmrapSet = activeExerciseData?.settings?.protocol === 'amrap'
+            && index === sets.length - 1
           return (
             <div key={index} className="space-y-1">
+              {/* AMRAP label above the last set */}
+              {isAmrapSet && (
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">AMRAP</span>
+                  <span className="text-[10px] text-gray-400">— go to your max</span>
+                </div>
+              )}
               {/* ── Main set row ── */}
               <div className={`flex items-center justify-between gap-1 p-2 rounded-xl border relative group transition-colors ${
-                isCheated ? 'bg-red-50 border-red-100' : isChecked ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'
+                isAmrapSet ? (isChecked ? 'bg-purple-50 border-purple-200' : 'bg-purple-50/50 border-purple-100') :
+                isCheated  ? 'bg-red-50 border-red-100'   :
+                isChecked  ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'
               }`}>
                 {sets.length > 1 && (
                   <button type="button" onClick={() => removeSet(index)} className="absolute -left-2 -top-2 bg-red-100 text-red-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow-sm">✕</button>

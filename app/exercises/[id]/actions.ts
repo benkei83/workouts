@@ -58,7 +58,7 @@ export async function saveExerciseSettings(
   const { error } = await supabase.from('user_exercise_settings').insert({
     user_id:          user.id,
     exercise_id:      exerciseId,
-    current_weight:   parseFloat(formData.get('weight') as string) || null,
+    current_weight:   (v => isNaN(v) ? null : v)(parseFloat(formData.get('weight') as string)),
     target_sets:      parseInt(formData.get('sets') as string)     || null,
     target_reps:      parseInt(formData.get('reps') as string)     || null,
     target_reps_min:  parseInt(formData.get('reps_min') as string) || 8,
