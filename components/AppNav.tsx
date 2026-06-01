@@ -12,6 +12,7 @@ const PRIMARY = [
 ]
 
 const MORE = [
+  { href: '/inbox',    label: '💬 Messages' },
   { href: '/programs', label: 'Programs' },
   { href: '/history',  label: '📋 History' },
   { href: '/weight',   label: '⚖️ Weight' },
@@ -28,6 +29,7 @@ export default function AppNav() {
   const pathname = usePathname()
 
   const [focusMode, setFocusMode] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   // Auth
   useEffect(() => {
@@ -35,12 +37,20 @@ export default function AppNav() {
     supabase.auth.getUser().then(async ({ data }) => {
       setUser(data.user)
       if (data.user) {
-        const { data: settings } = await supabase
-          .from('user_settings')
-          .select('focus_exercise_id')
-          .eq('user_id', data.user.id)
-          .maybeSingle()
+        const [{ data: settings }, { count }] = await Promise.all([
+          supabase
+            .from('user_settings')
+            .select('focus_exercise_id')
+            .eq('user_id', data.user.id)
+            .maybeSingle(),
+          supabase
+            .from('direct_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('recipient_id', data.user.id)
+            .is('read_at', null),
+        ])
         setFocusMode(!!settings?.focus_exercise_id)
+        setUnreadCount(count ?? 0)
       }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
@@ -50,19 +60,28 @@ export default function AppNav() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Re-check active workout on every navigation so starting/finishing updates immediately
+  // Re-check active workout + unread count on every navigation
   useEffect(() => {
     if (!user) return
     const supabase = createClient()
-    supabase
-      .from('workouts')
-      .select('id')
-      .eq('user_id', user.id)
-      .is('total_duration_mins', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setActiveWorkoutId(data?.id ?? null))
+    Promise.all([
+      supabase
+        .from('workouts')
+        .select('id')
+        .eq('user_id', user.id)
+        .is('total_duration_mins', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('direct_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('recipient_id', user.id)
+        .is('read_at', null),
+    ]).then(([{ data: workout }, { count }]) => {
+      setActiveWorkoutId(workout?.id ?? null)
+      setUnreadCount(count ?? 0)
+    })
   }, [pathname, user])
 
   // Clear immediately when the workout-finished event fires
@@ -119,13 +138,18 @@ export default function AppNav() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center px-5 py-4 text-sm font-bold border-b border-gray-100 last:border-0 transition-colors ${
+                  className={`flex items-center justify-between px-5 py-4 text-sm font-bold border-b border-gray-100 last:border-0 transition-colors ${
                     isActive(item.href)
                       ? 'text-blue-600 bg-blue-50'
                       : 'text-gray-900 hover:bg-gray-50'
                   }`}
                 >
                   {item.label}
+                  {item.href === '/inbox' && unreadCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </Link>
               ))}
               <button
@@ -177,11 +201,14 @@ export default function AppNav() {
 
           <button
             onClick={() => setOpen(prev => !prev)}
-            className={`flex-1 flex items-center justify-center py-3 text-xs font-bold transition-colors ${
+            className={`flex-1 flex items-center justify-center py-3 text-xs font-bold transition-colors relative ${
               open || moreIsActive ? 'text-blue-600' : 'text-gray-500 hover:text-gray-900'
             }`}
           >
             ≡ More
+            {unreadCount > 0 && !open && (
+              <span className="absolute top-2 right-[calc(50%-18px)] w-2 h-2 rounded-full bg-blue-600" />
+            )}
           </button>
         </div>
       </nav>

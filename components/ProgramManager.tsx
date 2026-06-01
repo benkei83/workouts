@@ -14,6 +14,7 @@ import {
   generateProgramShareToken,
   revokeProgramShareToken,
 } from '@/app/workout/actions'
+import { searchUsers, sendMessage } from '@/app/inbox/actions'
 import { MUSCLE_GROUPS } from '@/lib/muscleGroups'
 import WgerBrowseModal from '@/components/WgerBrowseModal'
 import type { WgerItem } from '@/components/WgerBrowseModal'
@@ -104,6 +105,36 @@ export default function ProgramManager({
     navigator.clipboard.writeText(url).then(() => {
       setShareCopied(true)
       setTimeout(() => setShareCopied(false), 2000)
+    })
+  }
+
+  // Send-to-user state
+  const [dmQuery, setDmQuery] = useState('')
+  const [dmResults, setDmResults] = useState<{ user_id: string; screen_name: string | null }[]>([])
+  const [dmSearching, startDmSearch] = useTransition()
+  const [dmTarget, setDmTarget] = useState<{ user_id: string; screen_name: string | null } | null>(null)
+  const [dmNote, setDmNote] = useState('')
+  const [dmSending, startDmSend] = useTransition()
+  const [dmSent, setDmSent] = useState<string | null>(null) // name of user sent to
+
+  const handleDmSearch = (q: string) => {
+    setDmQuery(q)
+    setDmTarget(null)
+    if (!q.trim()) { setDmResults([]); return }
+    startDmSearch(async () => {
+      const results = await searchUsers(q)
+      setDmResults(results)
+    })
+  }
+
+  const handleDmSend = (programId: string) => {
+    if (!dmTarget) return
+    startDmSend(async () => {
+      const res = await sendMessage({ recipientId: dmTarget.user_id, body: dmNote, programId })
+      if (res?.error) { alert(res.error); return }
+      setDmSent(dmTarget.screen_name ?? 'user')
+      setDmTarget(null); setDmQuery(''); setDmResults([]); setDmNote('')
+      setTimeout(() => setDmSent(null), 3000)
     })
   }
 
@@ -338,7 +369,8 @@ export default function ProgramManager({
       {/* SHARE MODAL */}
       {shareModal && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-white w-full max-w-md p-6 rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-xl animate-in fade-in slide-in-from-bottom-4 flex flex-col max-h-[85vh]">
+          <div className="overflow-y-auto flex-1 p-6">
             <div className="flex justify-between items-center mb-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Share Program</h2>
@@ -385,9 +417,76 @@ export default function ProgramManager({
                 >
                   {shareRevoking ? 'Revoking…' : 'Revoke link'}
                 </button>
+
+                {/* Send to user */}
+                <div className="border-t border-gray-100 pt-4 space-y-3">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Send to a user</p>
+
+                  {dmSent ? (
+                    <p className="text-sm font-semibold text-green-600">✓ Sent to {dmSent}!</p>
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={dmQuery}
+                          onChange={e => handleDmSearch(e.target.value)}
+                          placeholder="Search by screen name…"
+                          className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black"
+                        />
+                        {dmSearching && (
+                          <div className="flex items-center px-2">
+                            <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                          </div>
+                        )}
+                      </div>
+
+                      {dmResults.length > 0 && !dmTarget && (
+                        <div className="bg-gray-50 rounded-xl overflow-hidden border border-gray-200">
+                          {dmResults.map(u => (
+                            <button
+                              key={u.user_id}
+                              onClick={() => { setDmTarget(u); setDmResults([]) }}
+                              className="w-full text-left px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-100 border-b border-gray-100 last:border-0 transition-colors"
+                            >
+                              {u.screen_name?.trim() || `User ${u.user_id.slice(0, 6)}`}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {dmQuery.trim() && !dmSearching && dmResults.length === 0 && !dmTarget && (
+                        <p className="text-xs text-gray-400 px-1">No users found for "{dmQuery}"</p>
+                      )}
+
+                      {dmTarget && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                            <span className="text-sm font-bold text-blue-700">{dmTarget.screen_name}</span>
+                            <button onClick={() => setDmTarget(null)} className="text-blue-400 hover:text-blue-600 ml-auto text-sm">✕</button>
+                          </div>
+                          <textarea
+                            value={dmNote}
+                            onChange={e => setDmNote(e.target.value)}
+                            placeholder="Add a note (optional)…"
+                            rows={2}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black resize-none"
+                          />
+                          <button
+                            onClick={() => handleDmSend(shareModal!.programId)}
+                            disabled={dmSending}
+                            className="w-full bg-blue-600 text-white font-bold rounded-xl py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                          >
+                            {dmSending ? 'Sending…' : `Send to ${dmTarget.screen_name}`}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             ) : null}
-          </div>
+          </div>{/* overflow-y-auto */}
+          </div>{/* modal card */}
         </div>,
         document.body
       )}

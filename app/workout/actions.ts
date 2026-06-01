@@ -1523,9 +1523,20 @@ export async function importSharedProgram(token: string) {
     const sortedExercises = [...(pw.program_exercises || [])].sort((a, b) => a.sort_order - b.sort_order)
 
     for (const pe of sortedExercises) {
-      if (!(pe as any).exercises?.name) continue
+      // exercises join may be null if RLS blocks it — fall back to a direct lookup by ID
+      let exName: string | null = (pe as any).exercises?.name ?? null
+      const sourceExerciseId: string | null = (pe as any).exercise_id ?? (pe as any).exercises?.id ?? null
 
-      const exName = (pe as any).exercises.name
+      if (!exName && sourceExerciseId) {
+        const { data: fallback } = await supabase
+          .from('exercises')
+          .select('name')
+          .eq('id', sourceExerciseId)
+          .maybeSingle()
+        exName = fallback?.name ?? null
+      }
+
+      if (!exName) continue
 
       // Find or create this exercise for the importing user
       const { data: existingEx } = await supabase
