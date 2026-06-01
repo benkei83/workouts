@@ -320,7 +320,7 @@ function FeedCard({
                 liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
               }`}
             >
-              {liked ? '❤️' : '🤍'}
+              {liked ? '🥜' : '🥜'}
             </button>
             {likeCount > 0 && (
               <button
