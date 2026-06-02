@@ -192,10 +192,14 @@ export function InteractiveCanvas({
       setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
     } else {
       dequeuePendingOp(pendingId)
-      // If the progression engine updated settings, patch local state so badges stay accurate
+      // Patch local state immediately so badges update before the refresh arrives
       if (result?.newSettings) {
         setSettingsOverrides(prev => ({ ...prev, [exerciseId]: result.newSettings }))
       }
+      // Explicitly pull fresh RSC data. Avoids the "Recoverable hydration error" that
+      // occurs when revalidatePath pushes an RSC delta (updated streak count) against
+      // old client HTML — a client-initiated pull reconciles cleanly, a server push does not.
+      if (!focusExerciseId) startTransition(() => router.refresh())
       // pending card removed by the useEffect above when new log arrives
 
       // Focus mode: auto-finish the workout after saving the exercise
