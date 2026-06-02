@@ -462,6 +462,21 @@ export async function saveStrengthExercise(
       current_failures:  newFailures,
       target_reps_min:   newTargetRepsMin,
     }
+
+    // Persist the outcome on the log row so the workout history can display it
+    if (changed) {
+      const progResult = newWeight > (Number(setting.current_weight) || 0) ? 'increased'
+        : newWeight < (Number(setting.current_weight) || 0) ? 'deloaded'
+        : 'success'
+      await supabase.from('strength_logs').update({
+        prog_result:       progResult,
+        prog_old_weight:   Number(setting.current_weight) || 0,
+        prog_new_weight:   newWeight,
+        prog_successes:    newSuccesses,
+        prog_min_successes:Number(setting.min_successes) || 1,
+        prog_rate:         Number(setting.progression_rate) || 2.5,
+      }).eq('id', strengthLog.id)
+    }
   }
 
   revalidatePath(`/workout/${workoutId}`)

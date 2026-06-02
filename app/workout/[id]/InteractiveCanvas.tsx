@@ -40,6 +40,14 @@ type StrengthCard = {
   rawSets: { weight: number; reps: number; rpe?: number | null }[]
   supersetId?: string | null
   createdAt?: string
+  progression?: {
+    result: 'increased' | 'deloaded' | 'success'
+    oldWeight: number
+    newWeight: number
+    successes: number
+    minSuccesses: number
+    rate: number
+  } | null
 }
 
 type RenderItem =
@@ -50,6 +58,38 @@ type ProgramExercise = { id: string; exercise_id: string; sort_order: number; ex
 type ProgramWorkout = { id: string; name: string; rotation_order: number; program_exercises: ProgramExercise[] }
 type Program = { id: string; name: string; description: string | null; program_workouts: ProgramWorkout[] }
 type ActiveProgram = { program_id: string; current_rotation_index: number } | null
+
+type ProgData = NonNullable<StrengthCard['progression']>
+
+function ProgressionBadge({ prog }: { prog: ProgData | null }) {
+  if (!prog) return null
+  if (prog.result === 'increased') {
+    const delta = Math.round((prog.newWeight - prog.oldWeight) * 100) / 100
+    return (
+      <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100">
+        <span>🎉</span>
+        <span>Progression unlocked — next session: <strong>{prog.newWeight}kg</strong> (+{delta}kg)</span>
+      </div>
+    )
+  }
+  if (prog.result === 'deloaded') {
+    return (
+      <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-orange-50 text-orange-700 border border-orange-100">
+        <span>↓</span>
+        <span>Deload scheduled — next session: <strong>{prog.newWeight}kg</strong></span>
+      </div>
+    )
+  }
+  if (prog.result === 'success' && prog.minSuccesses > 1 && prog.successes > 0) {
+    return (
+      <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-green-50 text-green-700 border border-green-100">
+        <span>✓</span>
+        <span>{prog.successes}/{prog.minSuccesses} sessions toward +{prog.rate}kg</span>
+      </div>
+    )
+  }
+  return null
+}
 
 type SupersetTemplate = {
   id: string
@@ -281,6 +321,14 @@ export function InteractiveCanvas({
         rawSets: sets.map((s: any) => ({ weight: s.actual_weight, reps: s.actual_reps, rpe: s.rpe ?? null })),
         supersetId: log.superset_id || null,
         createdAt: log.created_at,
+        progression: log.prog_result ? {
+          result:      (log.prog_result as string) as ('increased' | 'deloaded' | 'success'),
+          oldWeight:   Number(log.prog_old_weight) || 0,
+          newWeight:   Number(log.prog_new_weight) || 0,
+          successes:   Number(log.prog_successes)  || 0,
+          minSuccesses:Number(log.prog_min_successes) || 1,
+          rate:        Number(log.prog_rate) || 2.5,
+        } : null,
       }
     })
 
@@ -499,42 +547,8 @@ export function InteractiveCanvas({
                   {ss && <SuccessBadge status={ss} />}
                   {ms && <MaintenanceBadge status={ms} />}
                   {ds && <DeloadBadge status={ds} />}
-                  {/* Post-save progression result — only shown when this session triggered a change */}
-                  {(() => {
-                    const override = settingsOverrides[lift.exerciseId]
-                    if (!override) return null
-                    const prevWeight  = Number(exData?.settings?.current_weight) || 0
-                    const newWeight   = Number(override.current_weight) || 0
-                    const newSucc     = Number(override.current_successes) || 0
-                    const minSucc     = Number(exData?.settings?.min_successes) || 1
-                    const progRate    = Number(exData?.settings?.progression_rate) || 2.5
-
-                    if (newWeight > prevWeight) {
-                      return (
-                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100">
-                          <span>🎉</span>
-                          <span>Progression unlocked — next session: <strong>{newWeight}kg</strong> (+{Math.round((newWeight - prevWeight) * 100) / 100}kg)</span>
-                        </div>
-                      )
-                    }
-                    if (newWeight < prevWeight) {
-                      return (
-                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-orange-50 text-orange-700 border border-orange-100">
-                          <span>↓</span>
-                          <span>Deload scheduled — next session: <strong>{newWeight}kg</strong></span>
-                        </div>
-                      )
-                    }
-                    if (minSucc > 1 && newSucc > 0) {
-                      return (
-                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-green-50 text-green-700 border border-green-100">
-                          <span>✓</span>
-                          <span>{newSucc}/{minSucc} sessions toward +{progRate}kg</span>
-                        </div>
-                      )
-                    }
-                    return null
-                  })()}
+                  {/* Progression result — stored on the log, works in both active and finished workouts */}
+                  <ProgressionBadge prog={lift.progression ?? null} />
                 </div>
               )
             }
