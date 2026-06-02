@@ -212,6 +212,15 @@ export async function saveStrengthExercise(
     .eq('is_active', true)
     .single()
 
+  // Will be populated by the engine and returned to the client so it can
+  // update local exercise state without a full page reload.
+  let progressionResult: {
+    current_weight: number
+    current_successes: number
+    current_failures: number
+    target_reps_min: number
+  } | null = null
+
   if (setting && setting.protocol && setting.protocol !== 'manual') {
     let newFailures      = Number(setting.current_failures)  || 0
     let newSuccesses     = Number(setting.current_successes) || 0
@@ -446,10 +455,17 @@ export async function saveStrengthExercise(
         }
       }
     }
+
+    progressionResult = {
+      current_weight:    newWeight,
+      current_successes: newSuccesses,
+      current_failures:  newFailures,
+      target_reps_min:   newTargetRepsMin,
+    }
   }
 
   revalidatePath(`/workout/${workoutId}`)
-  return { success: true }
+  return { success: true, newSettings: progressionResult }
 }
 
 export async function updateSupersetLog(

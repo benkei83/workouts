@@ -120,6 +120,9 @@ export function InteractiveCanvas({
   const [selectedDayIndex, setSelectedDayIndex] = useState(0)
   const [isPending, startTransition] = useTransition()
   const [isCreatingProgram, setIsCreatingProgram] = useState(false)
+  // Post-save settings overrides — keyed by exerciseId.
+  // The progression engine updates DB but exercises is a prop; this keeps badges in sync.
+  const [settingsOverrides, setSettingsOverrides] = useState<Record<string, any>>({})
   const router = useRouter()
 
   // ── Optimistic / offline state ────────────────────────────
@@ -189,6 +192,10 @@ export function InteractiveCanvas({
       setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
     } else {
       dequeuePendingOp(pendingId)
+      // If the progression engine updated settings, patch local state so badges stay accurate
+      if (result?.newSettings) {
+        setSettingsOverrides(prev => ({ ...prev, [exerciseId]: result.newSettings }))
+      }
       // pending card removed by the useEffect above when new log arrives
 
       // Focus mode: auto-finish the workout after saving the exercise
@@ -457,10 +464,13 @@ export function InteractiveCanvas({
               }
               const exData = exercises.find((e: any) => e.id === lift.exerciseId) as any
               const streak = exData?.computedStreak
-              const exSettings = exData?.settings
-              const ds = getDeloadStatus(exSettings, streak)
-              const ss = getSuccessStatus(exSettings, streak)
-              const ms = getMaintenanceStatus(exSettings, streak)
+              // Use post-save override if available so badges reflect the progression result
+              const exSettings = settingsOverrides[lift.exerciseId]
+                ? { ...exData?.settings, ...settingsOverrides[lift.exerciseId] }
+                : exData?.settings
+              const ds = isFinished ? null : getDeloadStatus(exSettings, streak)
+              const ss = isFinished ? null : getSuccessStatus(exSettings, streak)
+              const ms = isFinished ? null : getMaintenanceStatus(exSettings, streak)
               return (
                 <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
                   <div className="absolute -top-2 -right-2 flex gap-1 z-10">
