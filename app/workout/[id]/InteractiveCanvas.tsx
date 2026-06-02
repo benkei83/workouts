@@ -499,6 +499,42 @@ export function InteractiveCanvas({
                   {ss && <SuccessBadge status={ss} />}
                   {ms && <MaintenanceBadge status={ms} />}
                   {ds && <DeloadBadge status={ds} />}
+                  {/* Post-save progression result — only shown when this session triggered a change */}
+                  {(() => {
+                    const override = settingsOverrides[lift.exerciseId]
+                    if (!override) return null
+                    const prevWeight  = Number(exData?.settings?.current_weight) || 0
+                    const newWeight   = Number(override.current_weight) || 0
+                    const newSucc     = Number(override.current_successes) || 0
+                    const minSucc     = Number(exData?.settings?.min_successes) || 1
+                    const progRate    = Number(exData?.settings?.progression_rate) || 2.5
+
+                    if (newWeight > prevWeight) {
+                      return (
+                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span>🎉</span>
+                          <span>Progression unlocked — next session: <strong>{newWeight}kg</strong> (+{Math.round((newWeight - prevWeight) * 100) / 100}kg)</span>
+                        </div>
+                      )
+                    }
+                    if (newWeight < prevWeight) {
+                      return (
+                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-orange-50 text-orange-700 border border-orange-100">
+                          <span>↓</span>
+                          <span>Deload scheduled — next session: <strong>{newWeight}kg</strong></span>
+                        </div>
+                      )
+                    }
+                    if (minSucc > 1 && newSucc > 0) {
+                      return (
+                        <div className="mt-1 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2 bg-green-50 text-green-700 border border-green-100">
+                          <span>✓</span>
+                          <span>{newSucc}/{minSucc} sessions toward +{progRate}kg</span>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </div>
               )
             }
