@@ -520,9 +520,12 @@ export function InteractiveCanvas({
               const exSettings = settingsOverrides[lift.exerciseId]
                 ? { ...exData?.settings, ...settingsOverrides[lift.exerciseId] }
                 : exData?.settings
-              const ds = isFinished ? null : getDeloadStatus(exSettings, streak)
-              const ss = isFinished ? null : getSuccessStatus(exSettings, streak)
-              const ms = isFinished ? null : getMaintenanceStatus(exSettings, streak)
+              // Suppress streak badges if the log already has a progression result stored —
+              // ProgressionBadge is more accurate and we don't want duplicates.
+              const hasProg = !!lift.progression
+              const ds = isFinished || hasProg ? null : getDeloadStatus(exSettings, streak)
+              const ss = isFinished || hasProg ? null : getSuccessStatus(exSettings, streak)
+              const ms = isFinished || hasProg ? null : getMaintenanceStatus(exSettings, streak)
               return (
                 <div key={lift.logId} className="bg-white px-4 py-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-1 relative group">
                   <div className="absolute -top-2 -right-2 flex gap-1 z-10">
