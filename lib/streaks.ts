@@ -22,6 +22,7 @@ export function computeExerciseStreak(
   const targetSets    = Number(settings.target_sets)     || 5
   const targetReps    = Number(settings.target_reps)     || 5
   const targetRepsMin = Number(settings.target_reps_min) || 8
+  const currentTarget = Number(settings.current_weight)  || 0
   const isDouble      = settings.protocol === 'double'
 
   const outcomes: Array<'success' | 'failure' | 'maintenance'> = []
@@ -34,17 +35,25 @@ export function computeExerciseStreak(
 
     if (setsForExercise.length === 0) continue // exercise not done that day
 
-    const n        = setsForExercise.length
-    const allTop   = setsForExercise.every(s => Number(s.actual_reps) >= targetReps)
-    const allFloor = setsForExercise.every(s => Number(s.actual_reps) >= targetRepsMin)
+    // Count sets that meet the rep target — warm-ups, feeler sets, and heavy
+    // singles (fewer reps at a higher weight) must not penalise the outcome.
+    const qualTop   = setsForExercise.filter(s => Number(s.actual_reps) >= targetReps).length
+    const qualFloor = setsForExercise.filter(s => Number(s.actual_reps) >= targetRepsMin).length
+
+    // Deload guard: if the user completed enough sets at or above the scheduled
+    // weight, the session is at worst "maintenance" — never a failure.
+    const aboveTarget = setsForExercise.filter(s => Number(s.actual_weight) >= currentTarget).length
+    const enoughAbove = aboveTarget >= targetSets
 
     let outcome: 'success' | 'failure' | 'maintenance'
     if (isDouble) {
-      if (n >= targetSets && allTop)        outcome = 'success'
-      else if (n >= targetSets && allFloor) outcome = 'maintenance'
-      else                                  outcome = 'failure'
+      if (qualTop >= targetSets)                 outcome = 'success'
+      else if (qualFloor >= targetSets || enoughAbove) outcome = 'maintenance'
+      else                                       outcome = 'failure'
     } else {
-      outcome = (n >= targetSets && allTop) ? 'success' : 'failure'
+      if (qualTop >= targetSets)   outcome = 'success'
+      else if (enoughAbove)        outcome = 'maintenance'
+      else                         outcome = 'failure'
     }
 
     outcomes.push(outcome)

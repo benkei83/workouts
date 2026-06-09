@@ -239,19 +239,41 @@ export async function saveStrengthExercise(
     // Cheated sets are excluded — they shouldn't trigger a weight increase.
     const cleanSets = sets.filter(s => s.rpe == null || Number(s.rpe) <= 10)
 
-    // "Qualifying sets" are clean sets that hit the target rep count.
-    // Extra backoff sets (fewer reps) are ignored for the success check and
-    // weight baseline — they shouldn't penalise a session that already hit the target.
-    const qualifyingSets   = cleanSets.filter(s => Number(s.reps) >= targetReps)
-    const completedSetsCount = qualifyingSets.length          // only count sets that hit reps
+    const currentTarget = Number(setting.current_weight) || 0
+
+    // "Qualifying sets" hit the target rep count.
+    const qualifyingSets     = cleanSets.filter(s => Number(s.reps) >= targetReps)
+    const completedSetsCount = qualifyingSets.length
     const allSetsHitTarget   = completedSetsCount >= targetSets
 
-    // Base weight on qualifying sets only so backoff sets can't drag the baseline down.
+    // Sets at or above the scheduled weight — used as a deload guard.
+    // If the user lifted at or above the current target weight for enough sets,
+    // we must not deload even if they used a different rep scheme (e.g. lifted
+    // heavier with fewer reps than the target). We clear any failure streak and
+    // keep the weight unchanged rather than penalising the session.
+    const setsAtOrAboveTarget  = cleanSets.filter(s => Number(s.weight) >= currentTarget)
+    const enoughSetsAboveTarget = setsAtOrAboveTarget.length >= targetSets
+
+    // Use the MODE (most common weight) of qualifying sets as the base weight.
+    // • Math.min was wrong: a warm-up at 40 kg dragged the base to 42.5 after a "success"
+    // • Math.max is wrong: a single top set at 160 kg would inflate the base to 162.5
+    // • Mode: five sets at 150 + one at 160 → base = 150 ✓; five at 80 + warm-up at 40 → 80 ✓
+    const modeWeight = (weights: number[]) => {
+      if (weights.length === 0) return 0
+      const counts = new Map<number, number>()
+      for (const w of weights) counts.set(w, (counts.get(w) ?? 0) + 1)
+      return [...counts.entries()].reduce((best, cur) =>
+        cur[1] > best[1] || (cur[1] === best[1] && cur[0] > best[0]) ? cur : best
+      )[0]
+    }
+
     const actualWeight = qualifyingSets.length > 0
-      ? Math.min(...qualifyingSets.map(s => Number(s.weight)))
-      : cleanSets.length > 0
-        ? Math.min(...cleanSets.map(s => Number(s.weight)))   // fallback if no set hit target
-        : newWeight
+      ? modeWeight(qualifyingSets.map(s => Number(s.weight)))
+      : setsAtOrAboveTarget.length > 0
+        ? Math.max(...setsAtOrAboveTarget.map(s => Number(s.weight)))
+        : cleanSets.length > 0
+          ? Math.max(...cleanSets.map(s => Number(s.weight)))
+          : newWeight
 
     // Fetch the most-recent inactive settings row to detect a deload recovery.
     // If the current active weight is lower than the previous row's weight, the
@@ -284,6 +306,18 @@ export async function saveStrengthExercise(
           newWeight = actualWeight              // track actual weight for next session's pre-fill
         }
         changed = true
+      } else if (enoughSetsAboveTarget) {
+        // User lifted at or above the scheduled weight but used a different rep scheme
+        // (e.g. heavier with fewer reps, or a top set + backoffs).
+        // Don't count as a success, but also don't accumulate a failure — they clearly
+        // were not struggling with the weight. Reset any failure streak and leave the
+        // scheduled weight unchanged.
+        if (newFailures !== 0 || newSuccesses !== 0) {
+          newFailures  = 0
+          newSuccesses = 0
+          newWeight    = currentTarget          // keep the scheduled weight, not the heavier one
+          changed      = true
+        }
       } else {
         newSuccesses = 0
         newFailures += 1
@@ -303,7 +337,7 @@ export async function saveStrengthExercise(
       const lowerBound     = Math.max(1, Number(setting.target_reps_min) || 8)
       const maintainingSets = cleanSets.filter(s => Number(s.reps) >= lowerBound)
       const maintainWeight  = maintainingSets.length > 0
-        ? Math.min(...maintainingSets.map(s => Number(s.weight)))
+        ? modeWeight(maintainingSets.map(s => Number(s.weight)))
         : actualWeight
 
       if (qualifyingSets.length >= targetSets) {
@@ -318,13 +352,15 @@ export async function saveStrengthExercise(
           newWeight = actualWeight
         }
         changed = true
-      } else if (maintainingSets.length >= targetSets) {
-        // Maintenance: enough sets hit the lower bound (but not the upper)
-        if (newFailures !== 0 || newSuccesses !== 0 || maintainWeight !== newWeight) {
-          newFailures = 0
+      } else if (maintainingSets.length >= targetSets || enoughSetsAboveTarget) {
+        // Maintenance: hit the lower bound, OR lifted at/above the scheduled weight
+        // with a different rep scheme — either way, not a failure.
+        const baseWeight = maintainingSets.length >= targetSets ? maintainWeight : currentTarget
+        if (newFailures !== 0 || newSuccesses !== 0 || baseWeight !== newWeight) {
+          newFailures  = 0
           newSuccesses = 0
-          newWeight = maintainWeight
-          changed = true
+          newWeight    = baseWeight
+          changed      = true
         }
       } else {
         newSuccesses = 0
