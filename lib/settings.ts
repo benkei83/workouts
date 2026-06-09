@@ -15,6 +15,8 @@ export type UserSettings = {
    * of the full interface. Clear to restore normal access. UUID of the exercise.
    */
   focus_exercise_id: string | null
+  /** Default number of sets pre-filled when adding a new exercise (overridden by per-exercise target_sets) */
+  default_sets: number
 }
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -26,4 +28,5 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   auto_share_workouts: true,
   height_cm: null,
   focus_exercise_id: null,
+  default_sets: 5,
 }

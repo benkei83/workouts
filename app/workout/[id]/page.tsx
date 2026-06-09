@@ -214,7 +214,7 @@ async function WorkoutDataLoader({
   try {
     const { data: settingsRow } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, default_sets')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -228,6 +228,7 @@ async function WorkoutDataLoader({
         height_cm:                null,
         focus_exercise_id:        null,
         auto_share_workouts:      DEFAULT_USER_SETTINGS.auto_share_workouts,
+        default_sets:             settingsRow.default_sets != null ? Number(settingsRow.default_sets) : DEFAULT_USER_SETTINGS.default_sets,
       }
     }
   } catch { /* table not migrated yet — use defaults */ }

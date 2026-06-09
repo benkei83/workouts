@@ -30,7 +30,7 @@ async function SettingsContent() {
   try {
     const { data } = await supabase
       .from('user_settings')
-      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, auto_share_workouts, height_cm, focus_exercise_id')
+      .select('screen_name, show_trophy_toasts, rest_timer_default_secs, vibrate_on_rest_complete, sound_on_rest_complete, auto_share_workouts, height_cm, focus_exercise_id, default_sets')
       .eq('user_id', user.id)
       .maybeSingle()
 
@@ -52,6 +52,7 @@ async function SettingsContent() {
         auto_share_workouts:      data.auto_share_workouts      ?? DEFAULT_USER_SETTINGS.auto_share_workouts,
         height_cm:                data.height_cm != null ? Number(data.height_cm) : null,
         focus_exercise_id:        data.focus_exercise_id ?? null,
+        default_sets:             data.default_sets != null ? Number(data.default_sets) : DEFAULT_USER_SETTINGS.default_sets,
       }
     }
     if (!data && defaultName) {

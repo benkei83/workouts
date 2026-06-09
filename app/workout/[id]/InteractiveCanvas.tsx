@@ -780,6 +780,7 @@ export function InteractiveCanvas({
           onCancel={closeForm}
           onSave={handleSaveStrength}
           userSettings={userSettings}
+          initialSets={userSettings.default_sets ?? 5}
           initialExerciseId={focusExerciseId ?? undefined}
         />
       )}

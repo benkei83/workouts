@@ -83,10 +83,12 @@ export default function SettingsForm({
   const [restSecs, setRestSecs]   = useState<number | null>(settings.rest_timer_default_secs)
   const [vibrate, setVibrate]     = useState(settings.vibrate_on_rest_complete)
   const [sound, setSound]         = useState(settings.sound_on_rest_complete)
+  const [defaultSets, setDefaultSets] = useState<string>(String(settings.default_sets ?? 5))
   const [vibrateSupported, setVibrateSupported] = useState(false)
-  const [restSaved, setRestSaved]     = useState(false)
-  const [vibrateSaved, setVibrateSaved] = useState(false)
-  const [soundSaved, setSoundSaved]     = useState(false)
+  const [restSaved, setRestSaved]         = useState(false)
+  const [vibrateSaved, setVibrateSaved]   = useState(false)
+  const [soundSaved, setSoundSaved]       = useState(false)
+  const [defaultSetsSaved, setDefaultSetsSaved] = useState(false)
 
   // ── Community ──────────────────────────────────────────────────────────────
   const [autoShare, setAutoShare]     = useState(settings.auto_share_workouts)
@@ -150,6 +152,15 @@ export default function SettingsForm({
     setSound(next)
     await updateUserSettings({ sound_on_rest_complete: next })
     flash(setSoundSaved)
+  }
+
+  const handleDefaultSets = async (raw: string) => {
+    setDefaultSets(raw)
+    const n = parseInt(raw, 10)
+    if (!isNaN(n) && n >= 1 && n <= 20) {
+      await updateUserSettings({ default_sets: n })
+      flash(setDefaultSetsSaved)
+    }
   }
 
   const handleAutoShare = async () => {
@@ -332,6 +343,29 @@ export default function SettingsForm({
             <div className="flex items-center gap-2">
               <SavedBadge show={soundSaved} />
               <Toggle on={sound} onChange={handleSound} />
+            </div>
+          </div>
+        </Row>
+
+        {/* Default sets */}
+        <Row>
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-sm font-semibold text-gray-700">Default sets</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Pre-filled when adding a new exercise. Overridden by per-exercise settings.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <SavedBadge show={defaultSetsSaved} />
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={defaultSets}
+                onChange={e => handleDefaultSets(e.target.value)}
+                className="w-14 text-center text-sm font-bold bg-gray-100 border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-gray-900"
+              />
             </div>
           </div>
         </Row>

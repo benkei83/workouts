@@ -102,7 +102,8 @@ async function GoalsLoader() {
           strength_sets (
             exercise_id,
             actual_weight,
-            actual_reps
+            actual_reps,
+            exercises ( id, name )
           )
         )
       `)
@@ -306,6 +307,10 @@ async function GoalsLoader() {
   }
 
   // ── Available exercises for the add-goal form ─────────────────────────────
+  // Sources (in priority order, deduplicated by id):
+  //   1. user_exercise_settings rows (have configured settings)
+  //   2. workout history (logged at least once, even without settings)
+  //   3. existing goals (exercise may have been deleted from settings but goal persists)
 
   const seenIds = new Set<string>()
   const availableExercises: AvailableExercise[] = []
@@ -316,6 +321,20 @@ async function GoalsLoader() {
     seenIds.add(ex.id)
     availableExercises.push({ id: ex.id, name: ex.name })
   }
+
+  // Add exercises seen in workout history (covers users who log workouts
+  // without ever opening the exercise settings panel)
+  for (const workout of recentWorkouts || []) {
+    for (const log of (workout.strength_logs as any[]) || []) {
+      for (const s of (log.strength_sets as any[]) || []) {
+        const ex = s.exercises
+        if (!ex?.id || seenIds.has(ex.id)) continue
+        seenIds.add(ex.id)
+        availableExercises.push({ id: ex.id, name: ex.name })
+      }
+    }
+  }
+
   for (const g of computedGoals) {
     if (g.exercise_id && g.exercise_name && !seenIds.has(g.exercise_id)) {
       seenIds.add(g.exercise_id)
