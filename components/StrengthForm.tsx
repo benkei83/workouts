@@ -63,7 +63,7 @@ export default function StrengthForm({
   exercises: Exercise[],
   onCancel: () => void,
   /** When provided (new-exercise flow), the canvas owns the server call — form just hands off data and closes. */
-  onSave?: (exerciseId: string, exerciseName: string, sets: SetData[], skipProgression: boolean) => void,
+  onSave?: (exerciseId: string, exerciseName: string, sets: SetData[], skipProgression: boolean, notes?: string | null) => void,
   initialSets?: number,
   initialReps?: number,
   initialWeight?: number,
@@ -97,6 +97,7 @@ export default function StrengthForm({
   const [uiMode, setUiMode] = useState<'select' | 'create' | 'edit_settings'>('select')
   const [isWgerOpen, setIsWgerOpen] = useState(false)
   const [skipProgression, setSkipProgression] = useState(false)
+  const [note, setNote] = useState<string>(editData?.notes ?? '')
 
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
@@ -313,7 +314,7 @@ export default function StrengthForm({
     // ── Optimistic path (new exercise, canvas owns the server call) ──
     if (onSave && !editData) {
       const exerciseName = exercises.find(e => e.id === selectedExercise)?.name || 'Exercise'
-      onSave(selectedExercise, exerciseName, sets, skipProgression)
+      onSave(selectedExercise, exerciseName, sets, skipProgression, note.trim() || null)
       onCancel()
       return
     }
@@ -322,9 +323,10 @@ export default function StrengthForm({
     setIsSubmitting(true)
     if (editData) await deleteStrengthLog(editData.logId, workoutId)
     const result = await saveStrengthExercise(workoutId, selectedExercise, sets, {
-      createdAt: editData?.createdAt,
-      supersetId: editData?.supersetId,
+      createdAt:       editData?.createdAt,
+      supersetId:      editData?.supersetId,
       skipProgression,
+      notes:           note.trim() || null,
     })
     setIsSubmitting(false)
     if (result?.error) alert(`Database Error: ${result.error}`)
@@ -460,6 +462,18 @@ export default function StrengthForm({
           </div>
         )}
       </div>
+
+      {/* Per-exercise note */}
+      {uiMode === 'select' && (
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Exercise notes… (cues, feelings, plan for next time)"
+          rows={note ? 3 : 1}
+          maxLength={500}
+          className="w-full mb-4 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 placeholder-gray-400 outline-none focus:ring-2 focus:ring-gray-900 resize-none transition-all"
+        />
+      )}
 
       {/* Rest timer */}
       <RestTimer

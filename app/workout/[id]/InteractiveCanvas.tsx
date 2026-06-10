@@ -38,6 +38,7 @@ type StrengthCard = {
   maxWeight: number
   repsArray: number[]
   rawSets: { weight: number; reps: number; rpe?: number | null }[]
+  notes?: string | null
   supersetId?: string | null
   createdAt?: string
   progression?: {
@@ -220,14 +221,15 @@ export function InteractiveCanvas({
     exerciseId: string,
     exerciseName: string,
     sets: { weight: number; reps: number; rpe?: number | null }[],
-    skipProgression: boolean = false
+    skipProgression: boolean = false,
+    notes?: string | null,
   ) => {
     const pendingId = crypto.randomUUID()
 
     enqueuePendingOp({ id: pendingId, workoutId, type: 'strength', exerciseId, sets, timestamp: Date.now() })
     setPendingCards(prev => [...prev, { pendingId, type: 'strength', exerciseId, name: exerciseName, sets, status: 'saving' }])
 
-    const result = await saveStrengthExercise(workoutId, exerciseId, sets, { skipProgression })
+    const result = await saveStrengthExercise(workoutId, exerciseId, sets, { skipProgression, notes })
     if (result?.error) {
       setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: result.error } : c))
     } else {
@@ -319,6 +321,7 @@ export function InteractiveCanvas({
         maxWeight,
         repsArray: sets.map((s: any) => s.actual_reps),
         rawSets: sets.map((s: any) => ({ weight: s.actual_weight, reps: s.actual_reps, rpe: s.rpe ?? null })),
+        notes: (log as any).notes ?? null,
         supersetId: log.superset_id || null,
         createdAt: log.created_at,
         progression: log.prog_result ? {
@@ -547,6 +550,9 @@ export function InteractiveCanvas({
                   <p className="text-sm text-gray-500 font-medium">
                     {lift.setsCount} sets • {lift.repsArray.join('-')} reps
                   </p>
+                  {lift.notes && (
+                    <p className="text-xs text-gray-400 italic mt-0.5 leading-snug">{lift.notes}</p>
+                  )}
                   {ss && <SuccessBadge status={ss} />}
                   {ms && <MaintenanceBadge status={ms} />}
                   {ds && <DeloadBadge status={ds} />}

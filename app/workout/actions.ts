@@ -107,7 +107,7 @@ export async function saveStrengthExercise(
   workoutId: string,
   exerciseId: string,
   sets: { weight: number; reps: number; rpe?: number | null }[],
-  options?: { createdAt?: string, supersetId?: string, skipProgression?: boolean }
+  options?: { createdAt?: string, supersetId?: string, skipProgression?: boolean, notes?: string | null }
 ) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -117,6 +117,7 @@ export async function saveStrengthExercise(
   const logPayload: any = { workout_id: workoutId }
   if (options?.createdAt) logPayload.created_at = options.createdAt
   if (options?.supersetId) logPayload.superset_id = options.supersetId
+  if (options?.notes !== undefined) logPayload.notes = options.notes || null
 
   const { data: strengthLog, error: logError } = await supabase
     .from('strength_logs')
