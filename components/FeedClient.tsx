@@ -14,11 +14,20 @@ export interface FeedComment {
   created_at:  string
 }
 
+export interface FeedSetGroup {
+  weight: number
+  reps:   number
+  count:  number
+}
+
 export interface FeedExercise {
   name:       string
-  sets:       number
-  max_weight: number
-  top_reps:   number
+  // New format: grouped sets with full rep detail
+  set_groups?: FeedSetGroup[]
+  // Legacy fields (posts created before this change — kept for backwards compat)
+  sets?:       number
+  max_weight?: number
+  top_reps?:   number
 }
 
 export interface FeedCardio {
@@ -119,13 +128,59 @@ function CommentItem({
 
 // ── Exercise row ──────────────────────────────────────────────────────────────
 
+/** Compact human-readable summary of set groups.
+ *  Examples:
+ *    [{ w:80, r:5, c:5 }]                        → "80 kg · 5×5"
+ *    [{ w:80, r:5, c:4 }, { w:80, r:10, c:1 }]  → "80 kg · 4×5, ×10"
+ *    [{ w:60, r:5, c:1 }, { w:80, r:5, c:5 }]   → "60, 80 kg × 5"
+ *    [{ w:80, r:5, c:3 }, { w:90, r:3, c:1 }]   → "80 kg 3×5 · 90 kg ×3"
+ */
+function formatSetGroups(groups: FeedSetGroup[]): string {
+  if (!groups || groups.length === 0) return ''
+
+  const uniqueWeights = [...new Set(groups.map(g => g.weight))]
+  const allSameReps   = groups.every(g => g.reps === groups[0].reps)
+
+  if (uniqueWeights.length === 1) {
+    // All sets at same weight — focus on rep breakdown
+    const w = groups[0].weight
+    const repStr = groups
+      .map(g => g.count > 1 ? `${g.count}×${g.reps}` : `×${g.reps}`)
+      .join(', ')
+    return `${w} kg · ${repStr}`
+  }
+
+  if (allSameReps) {
+    // Multiple weights, same reps — summarise weights
+    const r = groups[0].reps
+    return `${uniqueWeights.join(', ')} kg × ${r}`
+  }
+
+  // Mixed: show each group
+  return groups
+    .map(g => `${g.weight} kg ${g.count > 1 ? `${g.count}×${g.reps}` : `×${g.reps}`}`)
+    .join(' · ')
+}
+
 function ExerciseRow({ ex }: { ex: FeedExercise }) {
+  // New format: use set_groups
+  if (ex.set_groups && ex.set_groups.length > 0) {
+    return (
+      <div className="flex items-baseline justify-between py-1 gap-2">
+        <span className="text-xs text-gray-700 font-medium truncate flex-1">{ex.name}</span>
+        <span className="text-[11px] text-gray-500 shrink-0 font-medium tabular-nums">
+          {formatSetGroups(ex.set_groups)}
+        </span>
+      </div>
+    )
+  }
+  // Legacy format fallback
   return (
     <div className="flex items-baseline justify-between py-1 gap-2">
       <span className="text-xs text-gray-700 font-medium truncate flex-1">{ex.name}</span>
       <span className="text-[11px] text-gray-400 shrink-0 tabular-nums">
         {ex.sets} set{ex.sets !== 1 ? 's' : ''}
-        {ex.max_weight > 0 && (
+        {(ex.max_weight ?? 0) > 0 && (
           <> · <span className="text-gray-600 font-semibold">{ex.max_weight} kg × {ex.top_reps}</span></>
         )}
       </span>
@@ -192,11 +247,14 @@ function FeedCard({
     if (!showComments) setTimeout(() => commentInputRef.current?.focus(), 100)
   }
 
-  // Decide whether exercises are the old string[] format (legacy posts) or new object[]
+  // Normalise exercises — handles three historical formats:
+  //   1. string[] (very early posts)
+  //   2. { name, sets, max_weight, top_reps } (before this change)
+  //   3. { name, set_groups } (current format)
   const exercises: FeedExercise[] = summary?.exercises
     ? (summary.exercises as any[]).map(e =>
         typeof e === 'string'
-          ? { name: e, sets: 0, max_weight: 0, top_reps: 0 }
+          ? { name: e }
           : (e as FeedExercise)
       )
     : []

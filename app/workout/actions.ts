@@ -591,6 +591,38 @@ export async function finishWorkout(formData: FormData) {
   redirect('/')
 }
 
+// ── Feed exercise helper ──────────────────────────────────────────────────────
+// Converts a flat array of completed sets into per-exercise set groups.
+// e.g. four sets of 5 reps + one AMRAP set of 10 at 80 kg becomes:
+//   { name: 'Squat', set_groups: [{ weight: 80, reps: 5, count: 4 }, { weight: 80, reps: 10, count: 1 }] }
+function buildExerciseSetGroups(
+  completedSets: { exercise_id?: string | null; actual_weight?: any; actual_reps?: any; exercises?: any }[]
+): { name: string; set_groups: { weight: number; reps: number; count: number }[] }[] {
+  const exRaw = new Map<string, { name: string; pairs: [number, number][] }>()
+
+  for (const s of completedSets) {
+    if (!s.exercise_id) continue
+    const name   = (s.exercises as any)?.name ?? 'Unknown'
+    const weight = Number(s.actual_weight) || 0
+    const reps   = Number(s.actual_reps)   || 0
+    if (!exRaw.has(s.exercise_id)) exRaw.set(s.exercise_id, { name, pairs: [] })
+    exRaw.get(s.exercise_id)!.pairs.push([weight, reps])
+  }
+
+  return Array.from(exRaw.values()).map(({ name, pairs }) => {
+    // Group identical (weight, reps) pairs; preserve weight-ascending order
+    const groupMap = new Map<string, { weight: number; reps: number; count: number }>()
+    for (const [w, r] of pairs) {
+      const key = `${w}:${r}`
+      if (!groupMap.has(key)) groupMap.set(key, { weight: w, reps: r, count: 0 })
+      groupMap.get(key)!.count++
+    }
+    const set_groups = Array.from(groupMap.values())
+      .sort((a, b) => a.weight !== b.weight ? a.weight - b.weight : a.reps - b.reps)
+    return { name, set_groups }
+  })
+}
+
 /**
  * Finish a workout and optionally save feel_rating + intensity.
  * Called from the client-side FinishWorkoutButton (does NOT redirect —
@@ -672,24 +704,7 @@ export async function finishWorkoutWithFeel(
               distance_km:  Math.round(Number(r.distance_km) * 10) / 10,
             }))
 
-          // Per-exercise stats: sets, max weight, reps at max weight
-          const exMap = new Map<string, { name: string; sets: number; max_weight: number; top_reps: number }>()
-          for (const s of completedSets) {
-            if (!s.exercise_id) continue
-            const name = (s.exercises as any)?.name ?? 'Unknown'
-            const weight = Number(s.actual_weight) || 0
-            const reps   = Number(s.actual_reps)   || 0
-            if (!exMap.has(s.exercise_id)) {
-              exMap.set(s.exercise_id, { name, sets: 0, max_weight: 0, top_reps: 0 })
-            }
-            const ex = exMap.get(s.exercise_id)!
-            ex.sets++
-            if (weight > ex.max_weight || (weight === ex.max_weight && reps > ex.top_reps)) {
-              ex.max_weight = weight
-              ex.top_reps   = reps
-            }
-          }
-          const exercises = Array.from(exMap.values())
+          const exercises = buildExerciseSetGroups(completedSets)
 
           const totalSets   = completedSets.length
           const totalVolume = Math.round(
@@ -824,24 +839,7 @@ export async function shareWorkoutToFeed(workoutId: string): Promise<{ ok: true;
       distance_km:  Math.round(Number(r.distance_km) * 10) / 10,
     }))
 
-  // Per-exercise stats
-  const exMap = new Map<string, { name: string; sets: number; max_weight: number; top_reps: number }>()
-  for (const s of completedSets) {
-    if (!s.exercise_id) continue
-    const name   = (s.exercises as any)?.name ?? 'Unknown'
-    const weight = Number(s.actual_weight) || 0
-    const reps   = Number(s.actual_reps)   || 0
-    if (!exMap.has(s.exercise_id)) {
-      exMap.set(s.exercise_id, { name, sets: 0, max_weight: 0, top_reps: 0 })
-    }
-    const ex = exMap.get(s.exercise_id)!
-    ex.sets++
-    if (weight > ex.max_weight || (weight === ex.max_weight && reps > ex.top_reps)) {
-      ex.max_weight = weight
-      ex.top_reps   = reps
-    }
-  }
-  const exercises = Array.from(exMap.values())
+  const exercises = buildExerciseSetGroups(completedSets)
 
   const seenPrEx = new Set<string>()
   const prs = allSets
