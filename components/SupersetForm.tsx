@@ -94,17 +94,22 @@ export default function SupersetForm({
 
   // ── Set-completion checkboxes + rest timer ───────────────
   const [checkedSets, setCheckedSets] = useState<Set<number>>(new Set())
-  const [restStartTime, setRestStartTime] = useState<number | null>(null)
+  const [restStartTime, setRestStartTime]     = useState<number | null>(null)
+  const [restForSetIndex, setRestForSetIndex] = useState<number | null>(null)
 
   const toggleSetChecked = (index: number) => {
     setCheckedSets(prev => {
       const next = new Set(prev)
       if (next.has(index)) {
         next.delete(index)
-        setRestStartTime(null)
+        if (restForSetIndex === index) {
+          setRestStartTime(null)
+          setRestForSetIndex(null)
+        }
       } else {
         next.add(index)
         setRestStartTime(Date.now())
+        setRestForSetIndex(index)
       }
       return next
     })
@@ -151,6 +156,38 @@ export default function SupersetForm({
   }
 
   // ── MATRIX HANDLERS ───────────────────────────────────────
+  const addSet = () => {
+    setMatrix(prev => {
+      const updated = { ...prev }
+      activeIds.forEach(id => {
+        const last = prev[id]?.[prev[id].length - 1] ?? { weight: 0, reps: 0 }
+        updated[id] = [...(prev[id] ?? []), { weight: last.weight, reps: last.reps }]
+      })
+      return updated
+    })
+  }
+
+  const removeSet = (setIndex: number) => {
+    if (numSets <= 1) return
+    setMatrix(prev => {
+      const updated = { ...prev }
+      activeIds.forEach(id => {
+        updated[id] = prev[id].filter((_, i) => i !== setIndex)
+      })
+      return updated
+    })
+    // Clear timer if we removed the set it was tracking
+    if (restForSetIndex === setIndex) {
+      setRestStartTime(null)
+      setRestForSetIndex(null)
+    }
+    setCheckedSets(prev => {
+      const next = new Set<number>()
+      prev.forEach(i => { if (i < setIndex) next.add(i); else if (i > setIndex) next.add(i - 1) })
+      return next
+    })
+  }
+
   const updateMatrixValue = (exerciseId: string, setIndex: number, field: 'weight' | 'reps', delta: number) => {
     setMatrix(prev => {
       const updated = { ...prev, [exerciseId]: [...prev[exerciseId]] }
@@ -384,27 +421,42 @@ export default function SupersetForm({
       {/* ── LOGGING / EDIT MODE ── */}
       {mode === 'logging' && (
         <div className="space-y-6">
-          {/* Rest timer */}
-          <RestTimer
-            startedAt={restStartTime}
-            defaultSecs={userSettings.rest_timer_default_secs}
-            vibrateOnComplete={userSettings.vibrate_on_rest_complete}
-            soundOnComplete={userSettings.sound_on_rest_complete}
-          />
-
           {Array.from({ length: numSets }).map((_, setIndex) => {
             const isChecked = checkedSets.has(setIndex)
             return (
-            <div key={setIndex} className={`rounded-2xl p-4 shadow-inner space-y-3 transition-colors ${isChecked ? 'bg-gray-800 ring-1 ring-green-500/30' : 'bg-gray-900'}`}>
+            <div key={setIndex}>
+              {/* Rest timer appears above the set that triggered it */}
+              {restForSetIndex === setIndex && (
+                <div className="mb-2">
+                  <RestTimer
+                    startedAt={restStartTime}
+                    defaultSecs={userSettings.rest_timer_default_secs}
+                    vibrateOnComplete={userSettings.vibrate_on_rest_complete}
+                    soundOnComplete={userSettings.sound_on_rest_complete}
+                  />
+                </div>
+              )}
+
+            <div className={`rounded-2xl p-4 shadow-inner space-y-3 transition-colors ${isChecked ? 'bg-gray-800 ring-1 ring-green-500/30' : 'bg-gray-900'}`}>
               <div className="flex items-center justify-between mb-2">
                 <h4 className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${isChecked ? 'text-green-400' : 'text-gray-400'}`}>Set {setIndex + 1}</h4>
-                <button
-                  type="button"
-                  onClick={() => toggleSetChecked(setIndex)}
-                  className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-xs transition-all active:scale-95 ${
-                    isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-gray-800 border-gray-600 text-gray-600'
-                  }`}
-                >✓</button>
+                <div className="flex items-center gap-2">
+                  {numSets > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeSet(setIndex)}
+                      className="text-[10px] text-gray-600 hover:text-red-400 font-bold transition-colors px-1"
+                      aria-label="Remove set"
+                    >✕</button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggleSetChecked(setIndex)}
+                    className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full border-2 font-bold text-xs transition-all active:scale-95 ${
+                      isChecked ? 'bg-green-500 border-green-500 text-white shadow-sm' : 'bg-gray-800 border-gray-600 text-gray-600'
+                    }`}
+                  >✓</button>
+                </div>
               </div>
 
               {activeIds.map((exId, exIndex) => {
@@ -483,8 +535,17 @@ export default function SupersetForm({
                 )
               })}
             </div>
-          )
-          })}
+            </div>  {/* outer wrapper per-set */}
+          )})}
+
+          {/* Add set */}
+          <button
+            type="button"
+            onClick={addSet}
+            className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300 text-sm font-bold transition-colors"
+          >
+            + Add Set
+          </button>
 
           <div className="flex gap-2">
             {!isEditing && (
