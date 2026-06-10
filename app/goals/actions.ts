@@ -101,6 +101,38 @@ export async function createGoal(formData: FormData) {
   return { ok: true }
 }
 
+export async function updateGoal(
+  id: string,
+  updates: {
+    target_value: number
+    target_reps:  number | null
+    label:        string | null
+    deadline:     string | null
+  }
+) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  if (isNaN(updates.target_value) || updates.target_value <= 0) return { error: 'Invalid target value' }
+
+  const { error } = await supabase
+    .from('user_goals')
+    .update({
+      target_value: updates.target_value,
+      target_reps:  updates.target_reps,
+      label:        updates.label,
+      deadline:     updates.deadline || null,
+    })
+    .eq('id', id)
+    .eq('user_id', user.id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/goals')
+  return { ok: true }
+}
+
 export async function deleteGoal(id: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

@@ -240,18 +240,26 @@ async function GoalsLoader() {
       progress_pct     = calcProgress(current_value, starting, target)
 
     } else if (gt === 'weight_reps' && sessions.length > 0 && tReps !== null) {
-      // Progress: tracked via implied 1RM (handles weight + rep improvements holistically)
       const impliedTargetOrm = estimateOneRM(target, tReps)
       const bestOrm          = Math.max(...sessions.map(s => s.best_1rm))
+      const repsMap          = exBestRepsMap.get(exId ?? '') ?? new Map<number, number>()
 
       // current_value: max reps achieved at or above target weight (for display)
-      const repsMap    = exBestRepsMap.get(exId ?? '') ?? new Map<number, number>()
-      const atOrAbove  = Array.from(repsMap.entries()).filter(([w]) => w >= target)
-      current_value    = atOrAbove.length > 0 ? Math.max(...atOrAbove.map(([, r]) => r)) : 0
+      const atOrAbove = Array.from(repsMap.entries()).filter(([w]) => w >= target)
+      current_value   = atOrAbove.length > 0 ? Math.max(...atOrAbove.map(([, r]) => r)) : 0
 
-      // Progress bar uses 1RM scale (starting_value was stored as best 1RM at creation)
-      progress_pct = calcProgress(bestOrm, starting, impliedTargetOrm)
+      // Progress: best weight at which the user achieved >= tReps reps, divided by target weight.
+      // Using 1RM here caused 100% progress even when the goal wasn't hit — e.g. 87 kg × 12
+      // gives a higher estimated 1RM than estimateOneRM(97, 5), so it showed 100% despite
+      // never doing 5 reps at 97 kg.
+      const bestWeightAtTargetReps = Array.from(repsMap.entries())
+        .filter(([, r]) => r >= tReps)
+        .reduce((max, [w]) => Math.max(max, w), 0)
+      progress_pct = bestWeightAtTargetReps > 0
+        ? Math.min(100, Math.round((bestWeightAtTargetReps / target) * 100))
+        : 0
 
+      // Rate + ETA still use 1RM trend (best available continuous signal)
       const s      = regressionSlope(sessions.filter(p => p.date >= cutoff60).map(p => ({ date: p.date, value: p.best_1rm })))
       weekly_rate  = s != null ? parseFloat((s * 7).toFixed(2)) : null
       eta_date     = calcEta(weekly_rate, bestOrm, impliedTargetOrm)

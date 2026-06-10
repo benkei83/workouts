@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { createGoal, deleteGoal } from '@/app/goals/actions'
+import { createGoal, deleteGoal, updateGoal } from '@/app/goals/actions'
 import { estimateOneRM } from '@/lib/stats/compute'
 
 // ── Shared types (exported for page.tsx) ──────────────────────────────────────
@@ -199,6 +199,93 @@ function GoalCard({ goal, onDelete, isDeleting }: {
   const rateStr    = formatWeeklyRate(goal)
   const isAchieved = !!goal.achieved_at
 
+  const [editing, setEditing]         = useState(false)
+  const [editWeight, setEditWeight]   = useState(String(goal.target_value))
+  const [editReps, setEditReps]       = useState(String(goal.target_reps ?? ''))
+  const [editLabel, setEditLabel]     = useState(goal.label ?? '')
+  const [editDeadline, setEditDeadline] = useState(goal.deadline ?? '')
+  const [isSaving, startSave]         = useTransition()
+  const [editError, setEditError]     = useState<string | null>(null)
+
+  const handleSave = () => {
+    setEditError(null)
+    const tv = parseFloat(editWeight)
+    const tr = goal.goal_type === 'weight_reps' ? parseInt(editReps, 10) : null
+    if (isNaN(tv) || tv <= 0) { setEditError('Invalid weight'); return }
+    if (goal.goal_type === 'weight_reps' && (!tr || tr < 1)) { setEditError('Invalid reps'); return }
+    startSave(async () => {
+      const res = await updateGoal(goal.id, {
+        target_value: tv,
+        target_reps:  tr,
+        label:        editLabel.trim() || null,
+        deadline:     editDeadline || null,
+      })
+      if (res.error) { setEditError(res.error); return }
+      setEditing(false)
+    })
+  }
+
+  if (editing) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-300 shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-bold text-gray-900">{meta.icon} Edit goal</span>
+          <button type="button" onClick={() => setEditing(false)}
+            className="text-xs text-gray-400 hover:text-gray-700 font-semibold">Cancel</button>
+        </div>
+
+        {/* Target value + reps */}
+        {goal.goal_type === 'weight_reps' ? (
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Target weight (kg)</label>
+              <input type="number" step="0.5" min="1" value={editWeight}
+                onChange={e => setEditWeight(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-gray-900" />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">Target reps</label>
+              <input type="number" step="1" min="1" value={editReps}
+                onChange={e => setEditReps(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-gray-900" />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">Target ({meta.unit})</label>
+            <input type="number" step="0.5" min="1" value={editWeight}
+              onChange={e => setEditWeight(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-gray-900" />
+          </div>
+        )}
+
+        {/* Label */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mb-1 block">Label (optional)</label>
+          <input type="text" maxLength={80} value={editLabel}
+            onChange={e => setEditLabel(e.target.value)}
+            placeholder="e.g. Summer deadlift goal"
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-900" />
+        </div>
+
+        {/* Deadline */}
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mb-1 block">Deadline (optional)</label>
+          <input type="date" value={editDeadline}
+            onChange={e => setEditDeadline(e.target.value)}
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gray-900" />
+        </div>
+
+        {editError && <p className="text-xs text-red-500 font-semibold">{editError}</p>}
+
+        <button type="button" onClick={handleSave} disabled={isSaving}
+          className="w-full bg-gray-900 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-gray-700 transition-colors disabled:opacity-40">
+          {isSaving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className={`bg-white rounded-2xl border shadow-sm p-4 ${isAchieved ? 'border-yellow-200 bg-yellow-50/30' : 'border-gray-100'}`}>
       {/* Header row */}
@@ -220,15 +307,25 @@ function GoalCard({ goal, onDelete, isDeleting }: {
             <p className="text-sm font-bold text-gray-500 italic">Body weight</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={isDeleting}
-          className="text-[11px] text-gray-300 hover:text-red-400 transition-colors font-bold shrink-0 p-1 disabled:opacity-40"
-          aria-label="Delete goal"
-        >
-          ✕
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-[11px] text-gray-300 hover:text-gray-600 transition-colors font-bold p-1"
+            aria-label="Edit goal"
+          >
+            ✎
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isDeleting}
+            className="text-[11px] text-gray-300 hover:text-red-400 transition-colors font-bold p-1 disabled:opacity-40"
+            aria-label="Delete goal"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Progress bar */}
