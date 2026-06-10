@@ -521,7 +521,7 @@ export async function saveStrengthExercise(
 }
 
 export async function updateSupersetLog(
-  cards: { logId: string; exerciseId: string; sets: { weight: number; reps: number; rpe?: number | null }[] }[],
+  cards: { logId: string; exerciseId: string; sets: { weight: number; reps: number; rpe?: number | null }[]; notes?: string | null }[],
   workoutId: string
 ) {
   const supabase = await createClient()
@@ -542,6 +542,13 @@ export async function updateSupersetLog(
         }))
       )
     }
+
+    // Update notes on the log row
+    if (card.notes !== undefined) {
+      await supabase.from('strength_logs')
+        .update({ notes: card.notes || null })
+        .eq('id', card.logId)
+    }
   }
 
   revalidatePath(`/workout/${workoutId}`)
@@ -550,14 +557,18 @@ export async function updateSupersetLog(
 
 export async function saveSupersetLog(
   workoutId: string,
-  matrix: { [exerciseId: string]: { weight: number, reps: number }[] }
+  matrix: { [exerciseId: string]: { weight: number, reps: number }[] },
+  notes?: Record<string, string | null>
 ) {
   // Generate one shared supersetId so all exercises are visually grouped
   const supersetId = crypto.randomUUID()
 
   // Call saveStrengthExercise for each exercise — this runs the progression engine per exercise
   for (const exId of Object.keys(matrix)) {
-    const result = await saveStrengthExercise(workoutId, exId, matrix[exId], { supersetId })
+    const result = await saveStrengthExercise(workoutId, exId, matrix[exId], {
+      supersetId,
+      notes: notes?.[exId] ?? null,
+    })
     if (result?.error) return result
   }
 

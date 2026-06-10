@@ -256,14 +256,15 @@ export function InteractiveCanvas({
 
   const handleSaveSuperset = async (
     matrix: Record<string, { weight: number; reps: number }[]>,
-    names: Record<string, string>
+    names: Record<string, string>,
+    notes: Record<string, string | null> = {}
   ) => {
     const pendingId = crypto.randomUUID()
 
     enqueuePendingOp({ id: pendingId, workoutId, type: 'superset', matrix, timestamp: Date.now() })
     setPendingCards(prev => [...prev, { pendingId, type: 'superset', matrix, names, status: 'saving' }])
 
-    const result = await saveSupersetLog(workoutId, matrix)
+    const result = await saveSupersetLog(workoutId, matrix, notes)
     if (result && 'error' in result) {
       setPendingCards(prev => prev.map(c => c.pendingId === pendingId ? { ...c, status: 'error', errorMessage: (result as any).error } : c))
     } else {
@@ -617,6 +618,9 @@ export function InteractiveCanvas({
                           <p className="text-xs text-gray-500 font-medium ml-6">
                             {lift.setsCount} sets • {lift.repsArray.join('-')} reps
                           </p>
+                          {lift.notes && (
+                            <p className="text-xs text-gray-400 italic ml-6 mt-0.5 leading-snug">{lift.notes}</p>
+                          )}
                           <div className="ml-6">
                             {ss && <SuccessBadge status={ss} compact />}
                             {ms && <MaintenanceBadge status={ms} compact />}

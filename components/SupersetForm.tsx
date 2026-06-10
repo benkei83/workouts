@@ -35,10 +35,11 @@ type SupersetTemplate = {
 
 // Passed when editing an existing superset
 type EditCard = {
-  logId: string
+  logId:     string
   exerciseId: string
-  name: string
-  rawSets: { weight: number; reps: number }[]
+  name:      string
+  rawSets:   { weight: number; reps: number }[]
+  notes?:    string | null
 }
 
 type SetMatrix = { [exerciseId: string]: { weight: number, reps: number }[] }
@@ -58,7 +59,7 @@ export default function SupersetForm({
   editData?: EditCard[]   // provided when editing an existing superset
   onCancel: () => void
   /** When provided (new superset flow), the canvas owns the server call. */
-  onSave?: (matrix: Record<string, { weight: number; reps: number }[]>, names: Record<string, string>) => void
+  onSave?: (matrix: Record<string, { weight: number; reps: number }[]>, names: Record<string, string>, notes: Record<string, string | null>) => void
   userSettings?: UserSettings
 }) {
   const router = useRouter()
@@ -86,6 +87,16 @@ export default function SupersetForm({
     return {}
   }
   const [matrix, setMatrix] = useState<SetMatrix>(buildInitialMatrix)
+
+  // ── Per-exercise notes ────────────────────────────────────
+  const [notes, setNotes] = useState<Record<string, string>>(() => {
+    if (isEditing && editData) {
+      const m: Record<string, string> = {}
+      editData.forEach(c => { if (c.notes) m[c.exerciseId] = c.notes })
+      return m
+    }
+    return {}
+  })
 
   // ── TEMPLATE SAVE STATE (new only) ───────────────────────
   const [showSaveTemplate, setShowSaveTemplate] = useState(false)
@@ -205,7 +216,9 @@ export default function SupersetForm({
     if (onSave && !isEditing) {
       const names: Record<string, string> = {}
       activeIds.forEach(id => { names[id] = getExerciseName(id) })
-      onSave(matrix, names)
+      const notesOut: Record<string, string | null> = {}
+      activeIds.forEach(id => { notesOut[id] = notes[id]?.trim() || null })
+      onSave(matrix, names, notesOut)
       onCancel()
       return
     }
@@ -214,9 +227,10 @@ export default function SupersetForm({
 
     if (isEditing) {
       const payload = editData!.map(card => ({
-        logId: card.logId,
+        logId:      card.logId,
         exerciseId: card.exerciseId,
-        sets: matrix[card.exerciseId] || [],
+        sets:       matrix[card.exerciseId] || [],
+        notes:      notes[card.exerciseId]?.trim() || null,
       }))
       const result = await updateSupersetLog(payload, workoutId)
       setIsSubmitting(false)
@@ -546,6 +560,25 @@ export default function SupersetForm({
           >
             + Add Set
           </button>
+
+          {/* Per-exercise notes */}
+          <div className="space-y-2">
+            {activeIds.map((exId, exIndex) => (
+              <div key={exId}>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">
+                  {String.fromCharCode(65 + exIndex)}. {getExerciseName(exId)} — note
+                </label>
+                <textarea
+                  value={notes[exId] ?? ''}
+                  onChange={e => setNotes(prev => ({ ...prev, [exId]: e.target.value }))}
+                  placeholder="Cues, feelings, plan for next time…"
+                  rows={(notes[exId] ?? '').length > 0 ? 2 : 1}
+                  maxLength={500}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-300 placeholder-gray-600 outline-none focus:ring-2 focus:ring-gray-500 resize-none transition-all"
+                />
+              </div>
+            ))}
+          </div>
 
           <div className="flex gap-2">
             {!isEditing && (
