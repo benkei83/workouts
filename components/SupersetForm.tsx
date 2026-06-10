@@ -535,7 +535,7 @@ export default function SupersetForm({
                 )
               })}
             </div>
-            </div>  {/* outer wrapper per-set */}
+            </div>
           )})}
 
           {/* Add set */}
