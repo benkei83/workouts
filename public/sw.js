@@ -4,7 +4,7 @@
 //   Pages / navigation               → network-first, fall back to /offline
 //   Supabase / API requests          → network-only (data must be fresh)
 
-const CACHE = 'yeah-buddy-v1'
+const CACHE = 'yeah-buddy-v2'
 const OFFLINE_URL = '/offline'
 
 // ── Install: pre-cache the offline page ──────────────────────────────────────
@@ -62,8 +62,13 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          // Cache successful page responses for future offline fallback
-          if (response.ok) {
+          // Cache successful page responses for future offline fallback.
+          //
+          // Skip redirected responses: an expired session makes the server
+          // 302 to /auth/login, and caching that HTML under the original URL
+          // means the SW keeps serving a login page for e.g. /workout/<id>
+          // long after the session is healthy again.
+          if (response.ok && !response.redirected && response.type === 'basic') {
             const clone = response.clone()
             caches.open(CACHE).then(cache => cache.put(request, clone))
           }
